@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Plus, Calendar, MapPin, LogOut, Sun, Moon, Loader2, Trash2, User, Edit2 } from 'lucide-react'
@@ -9,6 +9,7 @@ import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import EditProfileModal from '../components/EditProfileModal'
 import { useTrips, type Trip, useCurrentUser } from '../hooks/useTripData'
 import { useQueryClient } from '@tanstack/react-query'
+import { useTheme } from '../hooks/useTheme'
 
 
 
@@ -19,19 +20,7 @@ export default function Dashboard() {
 
     const { data: trips = [], isLoading, error } = useTrips(userId)
 
-    const [darkMode, setDarkMode] = useState(() => {
-        const savedTheme = localStorage.getItem('theme')
-        return savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
-    })
-
-    // Theme effect
-    useEffect(() => {
-        if (darkMode) {
-            document.documentElement.classList.add('dark')
-        } else {
-            document.documentElement.classList.remove('dark')
-        }
-    }, [darkMode])
+    const { isDark, toggleTheme } = useTheme()
 
     const [showCreateModal, setShowCreateModal] = useState(false)
     const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
@@ -39,18 +28,6 @@ export default function Dashboard() {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [tripToDelete, setTripToDelete] = useState<Trip | null>(null)
     const [expenseCount, setExpenseCount] = useState<number | null>(null)
-
-    const toggleTheme = () => {
-        const newMode = !darkMode
-        setDarkMode(newMode)
-        if (newMode) {
-            document.documentElement.classList.add('dark')
-            localStorage.setItem('theme', 'dark')
-        } else {
-            document.documentElement.classList.remove('dark')
-            localStorage.setItem('theme', 'light')
-        }
-    }
 
     const confirmDelete = async (e: React.MouseEvent, trip: Trip) => {
         e.stopPropagation()
@@ -124,7 +101,7 @@ export default function Dashboard() {
                     </button>
 
                     <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-300">
-                        {darkMode ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                        {isDark ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
                     </button>
 
                     <button
@@ -283,6 +260,9 @@ export default function Dashboard() {
                     </div>
                 ) : undefined}
             />
+            <div className="shrink-0 py-3 text-center text-xs text-gray-400 dark:text-gray-600 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm border-t border-gray-100 dark:border-gray-800">
+                A proprietary framework designed and developed by Omnish Singhal
+            </div>
         </div>
     )
 }

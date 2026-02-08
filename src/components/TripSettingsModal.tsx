@@ -4,6 +4,7 @@ import { X, Loader2, Save, Trash2, Plus, AlertTriangle, Settings, List, Check, E
 import { toast } from 'react-hot-toast'
 import type { Trip } from '../hooks/useTripData'
 import { useUpdateTrip, useUpdateMemberRole } from '../hooks/useTripData'
+import ExpenseAdjustmentConfirmModal from './ExpenseAdjustmentConfirmModal'
 
 interface TripSettingsModalProps {
     trip: Trip
@@ -62,7 +63,7 @@ export default function TripSettingsModal({ trip, participants, isOpen, onClose,
                         <GeneralSettings trip={trip} updateTrip={updateTripMutation} />
                     )}
                     {activeTab === 'roles' && (
-                        <RolesSettings participants={participants} currentUser={currentUser} updateRole={updateMemberRoleMutation} />
+                        <RolesSettings tripId={trip.id} participants={participants} currentUser={currentUser} updateRole={updateMemberRoleMutation} />
                     )}
                     {activeTab === 'categories' && (
                         <CategoriesSettings trip={trip} updateTrip={updateTripMutation} />
@@ -161,12 +162,233 @@ function GeneralSettings({ trip, updateTrip }: { trip: Trip, updateTrip: any }) 
     )
 }
 
-function RolesSettings({ participants, currentUser, updateRole }: { participants: any[], currentUser: string | null, updateRole: any }) {
+// Helper function to recalculate expense splits when parent_id changes
+async function recalculateExpenseSplits(
+    tripId: string,
+    participants: any[],
+    changedMemberId: string,
+    newParentId: string | null
+) {
+    try {
+        // Fetch all expenses for this trip with their splits
+        const { data: expenses, error: expError } = await supabase
+            .from('expenses')
+            .select(`
+                id,
+                amount,
+                expense_splits (
+                    participant_id,
+                    amount
+                )
+            `)
+            .eq('trip_id', tripId)
+
+        if (expError) {
+            console.error('Error fetching expenses:', expError)
+            throw expError
+        }
+        if (!expenses || expenses.length === 0) {
+            console.log('No expenses found for this trip')
+            return
+        }
+
+        console.log(`Processing ${expenses.length} expenses for recalculation`)
+
+        // Create updated participant map with new parent_id
+        const updatedParticipants = participants.map(p =>
+            p.id === changedMemberId
+                ? { ...p, parent_id: newParentId }
+                : p
+        )
+
+        let updatedCount = 0
+
+        // Process each expense
+        for (const expense of expenses) {
+            const splits = expense.expense_splits || []
+            if (splits.length === 0) continue
+
+            // 1. ANALYSIS: ATTEMPT TO DETECT "STANDARD/EQUAL" SPLIT PATTERN
+            // We support two detection strategies:
+            // A. Strict Construction: Reconstruct exactly based on "Payer + All Dependents"
+            // B. Heuristic/Fuzzy: Check if amounts are simple integer multiples of a base unit matching dependent counts
+
+            const getDependents = (pid: string) => participants.filter(p => p.parent_id === pid)
+
+            let isStandardSplit = false
+            let peopleInvolved = new Set<string>()
+
+            // Strategy A: Strict Reconstruction
+            let strictTotalUnits = 0
+            const strictPayerCounts: Record<string, number> = {}
+            const strictPeople: Set<string> = new Set()
+
+            for (const split of splits) {
+                const pid = split.participant_id
+                const dependents = getDependents(pid)
+                const count = 1 + dependents.length
+                strictPayerCounts[pid] = count
+                strictTotalUnits += count
+                strictPeople.add(pid)
+                dependents.forEach(d => strictPeople.add(d.id))
+            }
+
+            // Verify Strict
+            const strictUnitShare = expense.amount / strictTotalUnits
+            const isStrictMatch = splits.every((split: any) => {
+                const theoretical = strictUnitShare * (strictPayerCounts[split.participant_id] || 0)
+                return Math.abs(split.amount - theoretical) < 0.1
+            })
+
+            if (isStrictMatch) {
+                isStandardSplit = true
+                peopleInvolved = strictPeople
+                // console.log(`Expense ${expense.id}: Strict match found`)
+            } else {
+                // Strategy B: Heuristic Unit Matching (GCD-ish)
+                // Try total unit counts from splits.length up to participants.length * 2
+                // We are looking for a K such that `Share = Total / K` explains all splits as integer multiples
+
+                // Optimization: Start from strictTotalUnits (most likely)
+                const candidateUnits = [strictTotalUnits]
+                for (let k = splits.length; k <= participants.length + 5; k++) {
+                    if (k !== strictTotalUnits) candidateUnits.push(k)
+                }
+
+                for (const k of candidateUnits) {
+                    if (k === 0) continue
+                    const share = expense.amount / k
+
+                    // Check if every split is a rough integer multiple of `share`
+                    let fitsIntegers = true
+                    const splitUnits: Record<string, number> = {}
+
+                    for (const split of splits) {
+                        const unitsRaw = split.amount / share
+                        const units = Math.round(unitsRaw)
+                        if (Math.abs(unitsRaw - units) > 0.05) {
+                            fitsIntegers = false
+                            break
+                        }
+                        splitUnits[split.participant_id] = units
+                    }
+
+                    if (!fitsIntegers) continue
+
+                    // SUCCESS CASE 1: GLOBAL EQUAL SPLIT (K = N)
+                    // If the math works out to exactly N units, assume it's an equal split among everyone.
+                    // This handles cases where dependency links were broken (legacy data) but the amounts imply a full split.
+                    if (k === participants.length) {
+                        isStandardSplit = true
+                        peopleInvolved = new Set(participants.map(p => p.id))
+                        // console.log(`Expense ${expense.id}: Global match with K=${k}`)
+                        break
+                    }
+
+                    // SUCCESS CASE 2: STANDARD HIERARCHY CHECK
+                    // Check if the units assigned to each payer fit within their (Self + Dependents) capacity
+                    let possibleParams = new Set<string>()
+                    let isCapacityValid = true
+
+                    for (const split of splits) {
+                        const units = splitUnits[split.participant_id]
+                        const maxCapacity = 1 + getDependents(split.participant_id).length
+
+                        if (units > maxCapacity) {
+                            isCapacityValid = false
+                            break
+                        }
+
+                        // Add Payer + (Units-1) Dependents to peopleInvolved
+                        possibleParams.add(split.participant_id)
+                        const deps = getDependents(split.participant_id)
+                        for (let i = 0; i < units - 1; i++) {
+                            if (deps[i]) possibleParams.add(deps[i].id)
+                        }
+                    }
+
+                    if (isCapacityValid) {
+                        isStandardSplit = true
+                        peopleInvolved = possibleParams
+                        // console.log(`Expense ${expense.id}: Hierarchy match with K=${k}`)
+                        break
+                    }
+                }
+            }
+
+            if (!isStandardSplit) {
+                console.log(`Skipping expense ${expense.id} - custom split detected`)
+                continue
+            }
+
+            // 2. RECALCULATE FOR NEW STRUCTURE
+            // Distribute expense.amount among `peopleInvolved` using NEW relationships
+            if (peopleInvolved.size === 0) continue
+
+            const newPerPersonShare = expense.amount / peopleInvolved.size
+            const newConsolidatedSplits: Record<string, number> = {}
+
+            peopleInvolved.forEach(personId => {
+                // Find this person in NEW structure
+                const p = updatedParticipants.find(p => p.id === personId)
+                if (p) {
+                    // Consolidate to NEW parent or Self
+                    const targetId = p.parent_id || p.id
+                    newConsolidatedSplits[targetId] = (newConsolidatedSplits[targetId] || 0) + newPerPersonShare
+                }
+            })
+
+            // Delete old splits
+            const { error: deleteError } = await supabase
+                .from('expense_splits')
+                .delete()
+                .eq('expense_id', expense.id)
+
+            if (deleteError) {
+                console.error(`Error deleting splits for expense ${expense.id}:`, deleteError)
+                continue
+            }
+
+            // Insert new splits
+            const newSplits = Object.entries(newConsolidatedSplits).map(([pid, amt]) => ({
+                expense_id: expense.id,
+                participant_id: pid,
+                amount: amt
+            }))
+
+            if (newSplits.length > 0) {
+                const { error: insertError } = await supabase
+                    .from('expense_splits')
+                    .insert(newSplits)
+
+                if (insertError) {
+                    console.error(`Error inserting splits for expense ${expense.id}:`, insertError)
+                    continue
+                }
+                updatedCount++
+            }
+        }
+
+        if (updatedCount > 0) {
+            toast.success(`Updated ${updatedCount} expenses successfully`)
+        } else {
+            toast.success('Member updated (no expenses needed recalculation)')
+        }
+    } catch (error) {
+        console.error('Error recalculating expenses:', error)
+        toast.error('Failed to update expenses: ' + ((error as any).message || 'Unknown error'))
+        throw error // Re-throw to let caller know
+    }
+}
+
+function RolesSettings({ tripId, participants, currentUser, updateRole }: { tripId: string, participants: any[], currentUser: string | null, updateRole: any }) {
     const [editingMember, setEditingMember] = useState<any>(null)
     const [editName, setEditName] = useState('')
     const [editRole, setEditRole] = useState('')
     const [editParentId, setEditParentId] = useState<string | null>(null)
     const [saving, setSaving] = useState(false)
+    const [showExpenseConfirm, setShowExpenseConfirm] = useState(false)
+    const [pendingUpdates, setPendingUpdates] = useState<any>(null)
 
     const getParticipantName = (p: any) => {
         return p.profiles?.full_name || p.name || p.profiles?.email || 'Unknown User'
@@ -201,21 +423,36 @@ function RolesSettings({ participants, currentUser, updateRole }: { participants
 
     const handleSaveEdit = async () => {
         if (!editingMember || !editName.trim()) return
+
+        const willBeDependent = !!editParentId
+        const parentIdChanged = editingMember.parent_id !== editParentId
+
+        // Prepare update object
+        const updates: any = {
+            name: editName.trim(),
+            parent_id: editParentId
+        }
+
+        // Only set role if NOT a dependent
+        if (!willBeDependent) {
+            updates.role = editRole
+        }
+
+        // If parent_id changed, show confirmation modal
+        if (parentIdChanged) {
+            setPendingUpdates(updates)
+            setShowExpenseConfirm(true)
+            return
+        }
+
+        // No parent_id change, save directly
+        await performSave(updates, false)
+    }
+
+    const performSave = async (updates: any, updateExistingExpenses: boolean) => {
         setSaving(true)
-
         try {
-            const willBeDependent = !!editParentId
-
-            // Prepare update object
-            const updates: any = {
-                name: editName.trim(),
-                parent_id: editParentId
-            }
-
-            // Only set role if NOT a dependent
-            if (!willBeDependent) {
-                updates.role = editRole
-            }
+            const willBeDependent = !!updates.parent_id
 
             const { error } = await supabase
                 .from('trip_participants')
@@ -229,8 +466,15 @@ function RolesSettings({ participants, currentUser, updateRole }: { participants
                 await updateRole.mutateAsync({ id: editingMember.id, role: editRole })
             }
 
+            // If user chose to update existing expenses
+            if (updateExistingExpenses) {
+                await recalculateExpenseSplits(tripId, participants, editingMember.id, updates.parent_id)
+            }
+
             toast.success('Member updated successfully')
             closeEditModal()
+            setShowExpenseConfirm(false)
+            setPendingUpdates(null)
             window.location.reload()
         } catch (error: any) {
             console.error('Error updating member:', error)
@@ -238,6 +482,17 @@ function RolesSettings({ participants, currentUser, updateRole }: { participants
         } finally {
             setSaving(false)
         }
+    }
+
+    const handleExpenseConfirm = (updateExisting: boolean) => {
+        if (pendingUpdates) {
+            performSave(pendingUpdates, updateExisting)
+        }
+    }
+
+    const handleExpenseCancel = () => {
+        setShowExpenseConfirm(false)
+        setPendingUpdates(null)
     }
 
     const handleDeleteMember = async (id: string, name: string) => {
@@ -441,6 +696,15 @@ function RolesSettings({ participants, currentUser, updateRole }: { participants
                     </div>
                 </div>
             )}
+
+            {/* Expense Adjustment Confirmation Modal */}
+            <ExpenseAdjustmentConfirmModal
+                isOpen={showExpenseConfirm}
+                memberName={editName}
+                onConfirm={handleExpenseConfirm}
+                onCancel={handleExpenseCancel}
+                loading={saving}
+            />
         </div>
     )
 }

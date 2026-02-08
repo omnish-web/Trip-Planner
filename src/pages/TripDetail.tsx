@@ -15,6 +15,7 @@ import BalancesTab from '../components/BalancesTab'
 import { useQueryClient } from '@tanstack/react-query'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import { useTrip, useTripParticipants, useExpenses, useUpdateTrip, useDeleteTrip, useCurrentUser } from '../hooks/useTripData'
+import { useTheme } from '../hooks/useTheme'
 
 // ... (existing imports and interfaces)
 
@@ -86,15 +87,7 @@ export default function TripDetail() {
     const [showPasswordModal, setShowPasswordModal] = useState(false)
 
     // THEME & TITLE SYNC
-    useEffect(() => {
-        // Theme check
-        const savedTheme = localStorage.getItem('theme')
-        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark')
-        } else {
-            document.documentElement.classList.remove('dark')
-        }
-    }, [])
+    useTheme() // Just initialize to enforce theme (defaults to light if not set)
 
     useEffect(() => {
         if (trip) setEditedTitle(trip.title)
@@ -772,6 +765,10 @@ export default function TripDetail() {
                     </div>
                 </div>
             )}
+
+            <div className="fixed bottom-0 left-0 right-0 py-2 text-center text-[10px] text-gray-400 dark:text-gray-600 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-sm pointer-events-none z-40">
+                A proprietary framework designed and developed by Omnish Singhal
+            </div>
         </div >
     )
 }
