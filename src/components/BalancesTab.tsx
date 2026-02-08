@@ -1,5 +1,4 @@
 import { ArrowRight, CheckCircle2 } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts'
 
 interface BalancesTabProps {
     balances: {
@@ -17,10 +16,7 @@ interface BalancesTabProps {
     currentUser: string | null
 }
 
-export default function BalancesTab({ balances, settlements, currency, onSettle, currentUser }: BalancesTabProps) {
-
-    // Sort balances for chart
-    const chartData = [...balances].sort((a, b) => b.amount - a.amount)
+export default function BalancesTab({ balances, settlements, currency, onSettle, currentUser: _currentUser }: BalancesTabProps) {
 
     return (
         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">

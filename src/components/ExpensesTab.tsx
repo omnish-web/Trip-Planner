@@ -48,7 +48,7 @@ const ExpensesTab = React.memo(({
     onBulkCategoryChange,
     onDeleteAllExpenses,
     getParticipantName,
-    categories
+    categories: _categories
 }: ExpensesTabProps) => {
 
     // 1. Calculate Stats

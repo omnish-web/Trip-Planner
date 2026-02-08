@@ -194,7 +194,7 @@ export function useUpdateMemberRole() {
                 .eq('id', id)
             if (error) throw error
         },
-        onSuccess: (_, variables) => {
+        onSuccess: (_) => {
             queryClient.invalidateQueries({ queryKey: ['participants'] })
             queryClient.invalidateQueries({ queryKey: ['trips'] }) // Refresh trips for that user potentially
         },
