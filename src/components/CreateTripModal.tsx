@@ -102,6 +102,7 @@ export default function CreateTripModal({ onClose, onSuccess, trip }: CreateTrip
                             <label className="compact-label">Start Date</label>
                             <input
                                 type="date"
+                                required
                                 className="compact-input"
                                 value={startDate}
                                 onChange={e => setStartDate(e.target.value)}
@@ -111,6 +112,7 @@ export default function CreateTripModal({ onClose, onSuccess, trip }: CreateTrip
                             <label className="compact-label">End Date</label>
                             <input
                                 type="date"
+                                required
                                 className="compact-input"
                                 value={endDate}
                                 onChange={e => setEndDate(e.target.value)}

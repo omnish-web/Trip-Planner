@@ -537,7 +537,13 @@ export default function TripDetail() {
                             <div className="flex items-center gap-4 text-sm opacity-90">
                                 <span className="flex items-center gap-1 bg-black/20 backdrop-blur-sm px-2 py-1 rounded">
                                     <Calendar className="w-4 h-4" />
-                                    {trip.start_date ? format(parseISO(trip.start_date), 'MMM d, yyyy') : 'Date TBD'}
+                                    {trip.start_date && trip.end_date ? (
+                                        new Date(trip.start_date).getFullYear() === new Date(trip.end_date).getFullYear()
+                                            ? `${format(parseISO(trip.start_date), 'MMM d')} - ${format(parseISO(trip.end_date), 'MMM d, yyyy')}`
+                                            : `${format(parseISO(trip.start_date), 'MMM d, yyyy')} - ${format(parseISO(trip.end_date), 'MMM d, yyyy')}`
+                                    ) : trip.start_date ? (
+                                        format(parseISO(trip.start_date), 'MMM d, yyyy')
+                                    ) : 'Date TBD'}
                                 </span>
                                 <span className="flex items-center gap-1 bg-black/20 backdrop-blur-sm px-2 py-1 rounded">
                                     <MapPin className="w-4 h-4" />
