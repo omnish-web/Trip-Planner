@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, parseISO } from 'date-fns'
-import { Calendar, ImageIcon, UserPlus, Home, User, Loader2, Edit2, CheckCircle2, Trash2, Settings, MapPin, Sun, Moon, ArrowRight, CreditCard, PieChart as PieChartIcon, X, Save, Check, FileText, AlertTriangle, Download, Share2, Upload, LogOut, Wallet } from 'lucide-react'
+import { Calendar, ImageIcon, UserPlus, Home, Loader2, Edit2, CheckCircle2, Trash2, Settings, MapPin, Sun, Moon, CreditCard, PieChart as PieChartIcon, LogOut, Wallet } from 'lucide-react'
 import AddMemberModal from '../components/AddMemberModal'
 import ImagePickerModal from '../components/ImagePickerModal'
 import ConfirmModal from '../components/ConfirmModal'
@@ -14,7 +14,7 @@ import ExpensesTab from '../components/ExpensesTab'
 import BalancesTab from '../components/BalancesTab'
 import { useQueryClient } from '@tanstack/react-query'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
-import { useTrip, useTripParticipants, useExpenses, useUpdateTrip, useDeleteTrip, useCurrentUser } from '../hooks/useTripData'
+import { useTrip, useTripParticipants, useExpenses, useCurrentUser } from '../hooks/useTripData'
 
 
 // ... (existing imports and interfaces)
@@ -30,7 +30,7 @@ export default function TripDetail() {
     const { id } = useParams<{ id: string }>()
     const navigate = useNavigate()
     const queryClient = useQueryClient()
-    const { data: trip, isLoading: loadingTrip, error: tripError } = useTrip(id)
+    const { data: trip, isLoading: loadingTrip } = useTrip(id)
     const { data: participants = [], isLoading: loadingParticipants } = useTripParticipants(id)
     const { data: expenses = [], isLoading: loadingExpenses } = useExpenses(id)
     const { data: user = null } = useCurrentUser()
@@ -46,8 +46,7 @@ export default function TripDetail() {
     const [isEditingTitle, setIsEditingTitle] = useState(false)
     const [editedTitle, setEditedTitle] = useState('')
     const [showImagePicker, setShowImagePicker] = useState(false)
-    const [coverImageInput, setCoverImageInput] = useState('')
-    const [uploadingImage, setUploadingImage] = useState(false)
+
 
     // New state for settings
     const [showSettingsModal, setShowSettingsModal] = useState(false)
@@ -83,8 +82,6 @@ export default function TripDetail() {
     const [showDeleteExpenseModal, setShowDeleteExpenseModal] = useState(false)
     const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([])
     const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
-    const [showBulkCategoryModal, setShowBulkCategoryModal] = useState(false)
-    const [showDeleteAllModal, setShowDeleteAllModal] = useState(false)
 
     // Settle flow
     const [settleData, setSettleData] = useState<any>(null)
@@ -156,7 +153,6 @@ export default function TripDetail() {
         } else {
             toast.success('Cover image updated')
             setShowImagePicker(false)
-            setCoverImageInput('')
             queryClient.invalidateQueries({ queryKey: ['trip', id] })
         }
     }

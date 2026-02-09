@@ -11,6 +11,7 @@ export interface Trip {
     header_image_url: string
     currency: string
     user_role: string
+    destination?: string
     categories?: string[]
     settled_history?: any[]
 }
