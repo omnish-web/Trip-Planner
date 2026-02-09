@@ -52,27 +52,29 @@ const ExpensesTab = React.memo(({
 }: ExpensesTabProps) => {
 
     // 1. Calculate Stats
-    const totalCost = expenses.reduce((sum, e) => sum + e.amount, 0)
+    // 1. Calculate Stats (Exclude Settlements)
+    const validExpenses = expenses.filter(e => e.category !== 'Settlement' && e.title !== 'Settlement')
+    const totalCost = validExpenses.reduce((sum, e) => sum + e.amount, 0)
 
     // Your Share
     const myParticipantId = participants.find(p => p.user_id === currentUserId)?.id
-    const mySpending = expenses.filter(e => e.paid_by === myParticipantId).reduce((sum, e) => sum + e.amount, 0)
+    const mySpending = validExpenses.filter(e => e.paid_by === myParticipantId).reduce((sum, e) => sum + e.amount, 0)
 
     // Category Data for Pie Chart
     const categoryData = useMemo(() => {
         const stats: Record<string, number> = {}
-        expenses.forEach(e => {
+        validExpenses.forEach(e => {
             stats[e.category] = (stats[e.category] || 0) + e.amount
         })
         return Object.entries(stats)
             .map(([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value)
-    }, [expenses])
+    }, [validExpenses])
 
     // Group Expenses by Date
     const groupedExpenses = useMemo(() => {
         const groups: Record<string, any[]> = {}
-        expenses.forEach(e => {
+        expenses.filter(e => e.category !== 'Settlement' && e.title !== 'Settlement').forEach(e => {
             const dateStr = e.date
             if (!groups[dateStr]) groups[dateStr] = []
             groups[dateStr].push(e)
@@ -208,24 +210,26 @@ const ExpensesTab = React.memo(({
                                                             </div>
 
                                                             {/* Individual Action (Edit Only, Delete via bulk) */}
-                                                            {!isSelected && (isOwner || participants.find(p => p.id === expense.paid_by)?.user_id === currentUserId) && (
-                                                                <div className="flex gap-1">
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); onEditExpense(expense) }}
-                                                                        className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full transition"
-                                                                        title="Edit"
-                                                                    >
-                                                                        <Edit2 className="w-4 h-4" />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); onDeleteExpense(expense.id) }}
-                                                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition"
-                                                                        title="Delete"
-                                                                    >
-                                                                        <Trash2 className="w-4 h-4" />
-                                                                    </button>
-                                                                </div>
-                                                            )}
+                                                            {
+                                                                !isSelected && (isOwner || participants.find(p => p.id === expense.paid_by)?.user_id === currentUserId) && (
+                                                                    <div className="flex gap-1">
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); onEditExpense(expense) }}
+                                                                            className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full transition"
+                                                                            title="Edit"
+                                                                        >
+                                                                            <Edit2 className="w-4 h-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); onDeleteExpense(expense.id) }}
+                                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition"
+                                                                            title="Delete"
+                                                                        >
+                                                                            <Trash2 className="w-4 h-4" />
+                                                                        </button>
+                                                                    </div>
+                                                                )
+                                                            }
                                                         </div>
                                                     </div>
                                                 )
@@ -260,7 +264,7 @@ const ExpensesTab = React.memo(({
                         <div className="space-y-3">
                             {/* Group parents with their children */}
                             {participants.filter(p => !p.parent_id).map(parent => {
-                                const parentTotalSpent = expenses.filter(e => e.paid_by === parent.id).reduce((sum, e) => sum + e.amount, 0)
+                                const parentTotalSpent = expenses.filter(e => e.paid_by === parent.id && e.category !== 'Settlement' && e.title !== 'Settlement').reduce((sum, e) => sum + e.amount, 0)
                                 const parentBalance = balances.find(b => b.participantId === parent.id)?.amount || 0
                                 const parentName = parent.profiles?.full_name || parent.name || parent.profiles?.email
                                 const children = participants.filter(c => c.parent_id === parent.id)
@@ -416,36 +420,38 @@ const ExpensesTab = React.memo(({
                     </div>
 
                 </div>
-            </div>
+            </div >
 
             {/* Bulk Action Bar - Sticky Bottom */}
-            {isOwner && selectedExpenseIds.length > 0 && (
-                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4 animate-slide-up z-50">
-                    <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
-                        {selectedExpenseIds.length} selected
-                    </span>
-                    <div className="h-4 w-px bg-gray-300 dark:bg-gray-600"></div>
-                    <button
-                        onClick={onBulkCategoryChange}
-                        className="flex items-center gap-1.5 text-sm font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                    >
-                        <Edit2 className="w-4 h-4" /> Change Category
-                    </button>
-                    <button
-                        onClick={onBulkDelete}
-                        className="flex items-center gap-1.5 text-sm font-bold text-red-600 hover:text-red-700 dark:text-red-400"
-                    >
-                        <Trash2 className="w-4 h-4" /> Delete ({selectedExpenseIds.length})
-                    </button>
-                    <button
-                        onClick={() => onSelectAllDate('', [])} // Clear selection 
-                        className="ml-2 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                        <X className="w-4 h-4 text-gray-500" />
-                    </button>
-                </div>
-            )}
-        </div>
+            {
+                isOwner && selectedExpenseIds.length > 0 && (
+                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4 animate-slide-up z-50">
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
+                            {selectedExpenseIds.length} selected
+                        </span>
+                        <div className="h-4 w-px bg-gray-300 dark:bg-gray-600"></div>
+                        <button
+                            onClick={onBulkCategoryChange}
+                            className="flex items-center gap-1.5 text-sm font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                        >
+                            <Edit2 className="w-4 h-4" /> Change Category
+                        </button>
+                        <button
+                            onClick={onBulkDelete}
+                            className="flex items-center gap-1.5 text-sm font-bold text-red-600 hover:text-red-700 dark:text-red-400"
+                        >
+                            <Trash2 className="w-4 h-4" /> Delete ({selectedExpenseIds.length})
+                        </button>
+                        <button
+                            onClick={() => onSelectAllDate('', [])} // Clear selection 
+                            className="ml-2 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                        >
+                            <X className="w-4 h-4 text-gray-500" />
+                        </button>
+                    </div>
+                )
+            }
+        </div >
     )
 })
 

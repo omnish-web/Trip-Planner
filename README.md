@@ -1,73 +1,60 @@
-# React + TypeScript + Vite
+# TripPlanner
+### A Proprietary Framework Designed and Developed by Omnish Singhal
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**TripPlanner** is a next-generation travel finance application designed to solve the chaos of group and family trip management. Unlike generic expense trackers, TripPlanner is built with a deep understanding of complex group dynamics—especially families with dependents.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🚀 Key Features to Pitch
 
-## React Compiler
+### 1. 👨‍👩‍👧‍👦 Parent-Child Dependency (The "Killer" Feature)
+**"Most apps treat everyone as independent adults. TripPlanner understands families."**
+- **The Problem:** In apps like Splitwise, adding kids means creating fake accounts or awkwardly manually splitting bills every time.
+- **The TripPlanner Solution:** You can link members (e.g., "Alice") as dependents of a parent (e.g., "Bob").
+- **How it works:** When you add a "Dinner for 5" and split it equally, the app automatically calculates that Bob owes for himself AND Alice. The debt is consolidated to Bob. No math required.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 2. 📄 Professional PDF Snapshots
+**"Generate a financial report that looks like it came from an accountant."**
+- **One-Click Export:** Instantly generate a PDF "Snapshot" of the entire trip.
+- **Detailed:** Includes day-by-day breakdowns, category splits, and a final settlement plan.
+- **Use Case:** Perfect for sharing with the group at the end of a trip for total transparency.
 
-## Expanding the ESLint configuration
+### 3. 🧠 Smart & Heuristic Settlement
+**"It fixes your broken math."**
+- **Global Split Detection:** Even if you messed up the member list halfway through, the app's heuristic engine detects "Equal Splits" and "Standard Unit" shares to auto-correct and recalculate expenses seamlessly.
+- **Optimized Debts:** Reduces a web of 20 transactions down to just 3 or 4 simple payments between friends.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 4. 🎨 Premium "Glassmorphism" Design
+**"It just feels better to use."**
+- **Aesthetics:** Built with a stunning, translucent glass-like interface, smooth animations, and a curated background that changes with the theme.
+- **Dark/Light Mode:** Fully supported "Smart Theme" that remembers your preference across devices (defaulting to a clean Light mode).
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## ⚔️ How It Is Different From Popular Apps
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+| Feature | **TripPlanner** | **Splitwise / Tricount** |
+| :--- | :--- | :--- |
+| **Dependents (Kids/Pets)** | **First-Class Citizens:** Link them to parents; auto-consolidated debts. | **Non-Existent:** Must create fake accounts or do manual math. |
+| **Reporting** | **PDF Snapshot:** Detailed, downloadable, printable frame-worthy report. | Basic CSV export (often behind paywall). |
+| **Privacy** | **Proprietary Framework:** Custom-built, no selling data to third parties. | Corporate SaaS model. |
+| **Interface** | **Modern Glass UI:** Curated, ad-free, premium feel. | Generic, often cluttered with ads or upsells. |
+| **Cost** | **Free & Unlimited:** Full feature set unlocked. | "Pro" features (currency conversion, charts) often locked. |
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 🗣️ The "Elevator Pitch" for your Friend
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+> "You know how messy it gets tracking money when we travel with families? I started using **TripPlanner**. It's different because it actually handles families—I can just add my kids as my 'dependents,' and it automatically handles the math for me. Plus, at the end, I can literally just hit one button and send everyone a professional PDF reporting exactly who owes what. It’s way cleaner than Splitwise and doesn't hide charts behind a paywall."
+
+---
+
+## 🛠️ Technical Highlights
+- **Framework:** React + TypeScript + Vite
+- **Styling:** Tailwind CSS (Custom Glassmorphism Utility)
+- **Backend:** Supabase (PostgreSQL + RLS Security)
+- **State Management:** React Query (TanStack)
+- **Export:** jsPDF for vector-quality reports
+
+---
+*A proprietary framework designed and developed by Omnish Singhal.*

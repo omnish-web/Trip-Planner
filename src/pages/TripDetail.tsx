@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { format } from 'date-fns'
-import { Calendar, ImageIcon, UserPlus, Home, User, Loader2, Edit2, CheckCircle2, Trash2, Settings } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
+import { Calendar, ImageIcon, UserPlus, Home, User, Loader2, Edit2, CheckCircle2, Trash2, Settings, MapPin, Sun, Moon, ArrowRight, CreditCard, PieChart as PieChartIcon, X, Save, Check, FileText, AlertTriangle, Download, Share2, Upload, LogOut, Wallet } from 'lucide-react'
 import AddMemberModal from '../components/AddMemberModal'
 import ImagePickerModal from '../components/ImagePickerModal'
 import ConfirmModal from '../components/ConfirmModal'
@@ -15,7 +15,7 @@ import BalancesTab from '../components/BalancesTab'
 import { useQueryClient } from '@tanstack/react-query'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import { useTrip, useTripParticipants, useExpenses, useUpdateTrip, useDeleteTrip, useCurrentUser } from '../hooks/useTripData'
-import { useTheme } from '../hooks/useTheme'
+
 
 // ... (existing imports and interfaces)
 
@@ -25,115 +25,156 @@ import { useTheme } from '../hooks/useTheme'
 const TripSnapshotTab = lazy(() => import('../components/TripSnapshotTab'))
 const AddExpenseModal = lazy(() => import('../components/AddExpenseModal'))
 
-// Interfaces extracted from hooks or defined locally if needed
-// Expense interface is still used for state like expenseToEdit
-interface Expense {
-    id: string
-    title: string
-    amount: number
-    date: string
-    category: string
-    paid_by: string
-    expense_splits: {
-        participant_id: string
-        amount: number
-    }[]
-}
 
 export default function TripDetail() {
     const { id } = useParams<{ id: string }>()
     const navigate = useNavigate()
     const queryClient = useQueryClient()
-
-    // AUTH
-    // AUTH
-    const { data: currentUser = null } = useCurrentUser()
-
-    // DATA HOOKS
     const { data: trip, isLoading: loadingTrip, error: tripError } = useTrip(id)
     const { data: participants = [], isLoading: loadingParticipants } = useTripParticipants(id)
     const { data: expenses = [], isLoading: loadingExpenses } = useExpenses(id)
-    const updateTripMutation = useUpdateTrip()
-    const deleteTripMutation = useDeleteTrip()
+    const { data: user = null } = useCurrentUser()
+    const currentUser = user?.id || null
 
-    // DERIVED STATE
     const loading = loadingTrip || loadingParticipants || loadingExpenses
 
-    // LOCAL UI STATE
-    const [showSettingsModal, setShowSettingsModal] = useState(false)
-    const [showDeleteTripModal, setShowDeleteTripModal] = useState(false)
     const [activeTab, setActiveTab] = useState<'expenses' | 'balances' | 'snapshot'>('expenses')
     const [showAddExpense, setShowAddExpense] = useState(false)
     const [showAddMember, setShowAddMember] = useState(false)
-    const [showImagePicker, setShowImagePicker] = useState(false)
-    const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null)
-    const [settleData, setSettleData] = useState<any>(null)
+    const [expenseToEdit, setExpenseToEdit] = useState<any>(null)
+    const [showDeleteTripModal, setShowDeleteTripModal] = useState(false)
     const [isEditingTitle, setIsEditingTitle] = useState(false)
     const [editedTitle, setEditedTitle] = useState('')
-    const [showProfileModal, setShowProfileModal] = useState(false)
+    const [showImagePicker, setShowImagePicker] = useState(false)
+    const [coverImageInput, setCoverImageInput] = useState('')
+    const [uploadingImage, setUploadingImage] = useState(false)
 
-    // Modal State for Confirmations
-    const [showRemoveMemberModal, setShowRemoveMemberModal] = useState(false)
+    // New state for settings
+    const [showSettingsModal, setShowSettingsModal] = useState(false)
+    const [showProfileModal, setShowProfileModal] = useState(false)
+    const [showPasswordModal, setShowPasswordModal] = useState(false)
+    const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+    const handleSignOut = async () => {
+        setIsLoggingOut(true)
+        try {
+            await supabase.auth.signOut()
+            navigate('/')
+            toast.success('Signed out successfully')
+        } catch (error) {
+            console.error('Error signing out:', error)
+            toast.error('Failed to sign out')
+        } finally {
+            setIsLoggingOut(false)
+        }
+    }
+
+
+    // Member Management
     const [memberToRemove, setMemberToRemove] = useState<{ id: string, name: string } | null>(null)
-    const [showDeleteExpenseModal, setShowDeleteExpenseModal] = useState(false)
-    const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null)
-    const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
-    const [showEditMemberModal, setShowEditMemberModal] = useState(false)
+    const [showRemoveMemberModal, setShowRemoveMemberModal] = useState(false)
     const [memberToEdit, setMemberToEdit] = useState<any>(null)
+    const [showEditMemberModal, setShowEditMemberModal] = useState(false)
     const [editedMemberName, setEditedMemberName] = useState('')
 
-    // Bulk Actions State
+
+    // Expense Management
+    const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null)
+    const [showDeleteExpenseModal, setShowDeleteExpenseModal] = useState(false)
     const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([])
-    const [showPasswordModal, setShowPasswordModal] = useState(false)
+    const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+    const [showBulkCategoryModal, setShowBulkCategoryModal] = useState(false)
+    const [showDeleteAllModal, setShowDeleteAllModal] = useState(false)
 
-    // THEME & TITLE SYNC
-    useTheme() // Just initialize to enforce theme (defaults to light if not set)
+    // Settle flow
+    const [settleData, setSettleData] = useState<any>(null)
 
+    // Theme state (local for now, could be global)
+    const [isDark, setIsDark] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return document.documentElement.classList.contains('dark')
+        }
+        return false
+    })
+
+    const toggleTheme = useCallback(() => {
+        const newIsDark = !isDark
+        setIsDark(newIsDark)
+        if (newIsDark) {
+            document.documentElement.classList.add('dark')
+            localStorage.setItem('theme', 'dark')
+        } else {
+            document.documentElement.classList.remove('dark')
+            localStorage.setItem('theme', 'light')
+        }
+    }, [isDark])
+
+
+
+    // Effect to init editedTitle
     useEffect(() => {
         if (trip) setEditedTitle(trip.title)
     }, [trip])
 
     // ERROR HANDLING
     useEffect(() => {
-        if (tripError) {
-            console.error('Error fetching trip:', tripError)
-            toast.error('Failed to load trip details')
-            navigate('/dashboard')
+        // Assuming useTripData handles its own errors or provides an error state
+        // If useTripData had an explicit error, we'd handle it here.
+        // For now, we'll rely on the `loading` state from useTripData.
+        if (!loading && !trip && id) { // If not loading and no trip found for an ID
+            // This might indicate an error or non-existent trip
+            // console.error('Trip not found or error fetching trip details.')
+            // toast.error('Failed to load trip details or trip not found.')
+            // navigate('/dashboard')
         }
-    }, [tripError, navigate])
+    }, [loading, trip, id, navigate])
 
     const handleDeleteTrip = async () => {
         if (!trip) return
-        try {
-            await deleteTripMutation.mutateAsync(trip.id)
-            toast.success('Trip deleted successfully')
-            navigate('/dashboard')
-        } catch (error) {
-            console.error('Error deleting trip:', error)
+        toast.loading('Deleting trip...')
+        const { error } = await supabase.from('trips').delete().eq('id', trip.id)
+        toast.dismiss()
+
+        if (error) {
             toast.error('Failed to delete trip')
+        } else {
+            toast.success('Trip deleted')
+            navigate('/dashboard')
         }
     }
 
     const handleUpdateImage = async (url: string) => {
         if (!trip) return
-        try {
-            await updateTripMutation.mutateAsync({ id: trip.id, updates: { header_image_url: url } })
-            setShowImagePicker(false)
-            toast.success('Cover image updated!')
-        } catch (error) {
+
+        const { error } = await supabase
+            .from('trips')
+            .update({ header_image_url: url })
+            .eq('id', trip.id)
+
+        if (error) {
             toast.error('Failed to update cover image')
+        } else {
+            toast.success('Cover image updated')
+            setShowImagePicker(false)
+            setCoverImageInput('')
+            queryClient.invalidateQueries({ queryKey: ['trip', id] })
         }
     }
 
     const handleUpdateTitle = async () => {
-        if (!trip || !editedTitle.trim()) return
+        if (!editedTitle.trim() || !trip) return
 
-        try {
-            await updateTripMutation.mutateAsync({ id: trip.id, updates: { title: editedTitle.trim() } })
-            setIsEditingTitle(false)
-            toast.success('Trip title updated')
-        } catch (error) {
+        const { error } = await supabase
+            .from('trips')
+            .update({ title: editedTitle.trim() })
+            .eq('id', trip.id)
+
+        if (error) {
             toast.error('Failed to update title')
+        } else {
+            toast.success('Title updated')
+            setIsEditingTitle(false)
+            queryClient.invalidateQueries({ queryKey: ['trip', id] })
         }
     }
 
@@ -210,8 +251,8 @@ export default function TripDetail() {
             setSettleData({
                 title: 'Settlement',
                 amount: amount,
-                category: 'Other',
-                paid_by: payer.id,
+                category: 'Settlement',
+                paidBy: payer.id,
                 split_type: 'exact',
                 splits: { [receiver.id]: amount }
             })
@@ -384,6 +425,34 @@ export default function TripDetail() {
 
     const isOwner = useMemo(() => participants.find(p => p.user_id === currentUser && p.user_id !== null)?.role === 'owner', [participants, currentUser])
 
+    // 3. Get Settled History
+    const settledHistory = useMemo(() => {
+        return expenses
+            .filter(e => e.title === 'Settlement' || e.category === 'Settlement')
+            .map(e => {
+                const payer = participants.find(p => p.id === e.paid_by)
+                // In a settlement, there's usually one split: the receiver
+                const receiverId = e.expense_splits?.[0]?.participant_id
+                const receiver = participants.find(p => p.id === receiverId)
+
+                return {
+                    id: e.id,
+                    from: payer?.profiles?.full_name || payer?.name || payer?.profiles?.email || 'Unknown',
+                    to: receiver?.profiles?.full_name || receiver?.name || receiver?.profiles?.email || 'Unknown',
+                    amount: e.amount,
+                    date: e.date
+                }
+            })
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    }, [expenses, participants])
+
+
+    const tabs = [
+        { id: 'expenses', label: 'Expenses', icon: CreditCard },
+        { id: 'balances', label: 'Balances', icon: Wallet },
+        { id: 'snapshot', label: 'Snapshot', icon: PieChartIcon },
+    ]
+
 
     if (loading) {
         return (
@@ -407,7 +476,6 @@ export default function TripDetail() {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent"></div>
 
-                {/* Edit Cover Button - Only for owners */}
                 {/* Edit Cover and Delete Trip Buttons - Only for owners */}
                 {isOwner && (
                     <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -429,6 +497,7 @@ export default function TripDetail() {
                     </div>
                 )}
 
+
                 <div className="absolute bottom-4 left-4 right-4 text-white">
                     <div className="flex justify-between items-end">
                         <div className="flex-1 mr-4">
@@ -447,6 +516,10 @@ export default function TripDetail() {
                                                 setEditedTitle(trip.title)
                                             }
                                         }}
+                                        onBlur={() => {
+                                            setIsEditingTitle(false)
+                                            setEditedTitle(trip.title)
+                                        }}
                                     />
                                     <button onClick={handleUpdateTitle} className="p-1 hover:bg-white/20 rounded">
                                         <CheckCircle2 className="w-6 h-6 text-green-400" />
@@ -456,181 +529,193 @@ export default function TripDetail() {
                                     </button>
                                 </div>
                             ) : (
-                                <div className="flex items-center gap-2 group/title">
-                                    <h1 className="text-3xl font-bold mb-1 shadow-black/50 drop-shadow-md">{trip.title}</h1>
-                                    {isOwner && (
-                                        <button
-                                            onClick={() => setIsEditingTitle(true)}
-                                            className="p-1.5 bg-black/20 hover:bg-white/20 rounded-full transition-colors backdrop-blur-sm"
-                                            title="Edit Trip Name"
-                                        >
-                                            <Edit2 className="w-4 h-4 text-white/90" />
-                                        </button>
-                                    )}
+                                <div className="flex items-center gap-2 mb-1 group/title cursor-pointer" onClick={() => isOwner && setIsEditingTitle(true)}>
+                                    <h1 className="text-3xl font-bold">{trip.title}</h1>
+                                    {isOwner && <Edit2 className="w-4 h-4 opacity-50 group-hover/title:opacity-100 transition-opacity" />}
                                 </div>
                             )}
                             <div className="flex items-center gap-4 text-sm opacity-90">
-                                <div className="flex items-center gap-1">
+                                <span className="flex items-center gap-1 bg-black/20 backdrop-blur-sm px-2 py-1 rounded">
                                     <Calendar className="w-4 h-4" />
-                                    {trip.start_date ? format(new Date(trip.start_date), 'MMM d') : ''}
-                                    {trip.end_date ? ` - ${format(new Date(trip.end_date), 'MMM d, yyyy')}` : ''}
-                                </div>
-                                {participants.length} Members
+                                    {trip.start_date ? format(parseISO(trip.start_date), 'MMM d, yyyy') : 'Date TBD'}
+                                </span>
+                                <span className="flex items-center gap-1 bg-black/20 backdrop-blur-sm px-2 py-1 rounded">
+                                    <MapPin className="w-4 h-4" />
+                                    {trip.destination || 'No Destination'}
+                                </span>
                             </div>
                         </div>
 
-                        <div className="flex gap-2 shrink-0 pb-1">
+                        {/* Theme Toggle in Header */}
+                        <button
+                            onClick={toggleTheme}
+                            className="p-2 rounded-full bg-black/20 backdrop-blur-sm hover:bg-black/40 text-white transition-colors"
+                            title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                        >
+                            {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Sticky Navigation Bar */}
+            <div className="sticky top-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 shadow-sm transition-all">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center justify-between h-16 gap-4">
+
+                        {/* Left: Home & Title */}
+                        <div className="flex items-center gap-4 min-w-0">
+                            <button
+                                onClick={() => navigate('/dashboard')}
+                                className="p-2 -ml-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+                                title="Back to Dashboard"
+                            >
+                                <Home className="w-5 h-5" />
+                            </button>
+                            <h2 className="text-lg font-bold text-gray-900 dark:text-white truncate hidden sm:block opacity-90">
+                                {trip.title}
+                            </h2>
+                        </div>
+
+                        {/* Center: Tabs */}
+                        <div className="flex gap-1 overflow-x-auto no-scrollbar py-1">
+                            {tabs.map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id as any)}
+                                    className={`px-3 sm:px-4 py-1.5 rounded-full flex items-center gap-2 text-sm font-medium transition-all duration-200 whitespace-nowrap
+                                    ${activeTab === tab.id
+                                            ? 'bg-blue-600 text-white shadow-md'
+                                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                        }`}
+                                >
+                                    <tab.icon className="w-4 h-4" />
+                                    <span className="hidden sm:inline">{tab.label}</span>
+                                    {/* Show simplified label on mobile if needed, or just icon */}
+                                    <span className="sm:hidden">{tab.label === 'Expenses' ? 'Exp' : tab.label === 'Balances' ? 'Bal' : 'Snap'}</span>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Right: Actions */}
+                        <div className="flex gap-2 shrink-0">
+                            {/* Only Owner can manage settings */}
                             {isOwner && (
                                 <button
                                     onClick={() => setShowSettingsModal(true)}
-                                    className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 transition flex items-center gap-2 px-3"
+                                    className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
                                     title="Trip Settings"
                                 >
-                                    <Settings className="w-4 h-4" />
+                                    <Settings className="w-5 h-5" />
                                 </button>
                             )}
                             <button
                                 onClick={() => setShowAddMember(true)}
-                                className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 transition flex items-center gap-2 px-4"
+                                className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full transition"
+                                title="Invite Members"
                             >
-                                <UserPlus className="w-4 h-4" />
-                                <span className="hidden sm:inline text-sm font-bold">Invite</span>
+                                <UserPlus className="w-5 h-5" />
+                            </button>
+                            <button
+                                onClick={handleSignOut}
+                                disabled={isLoggingOut}
+                                className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition disabled:opacity-50"
+                                title="Sign Out"
+                            >
+                                {isLoggingOut ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogOut className="w-5 h-5" />}
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
+            {/* Main Content Area */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {/* (Tabs were here, now moved up) */}
 
-            {/* Navigation Tabs - Sticky */}
-            <div className="sticky top-0 z-30 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 px-4 shrink-0 shadow-sm transition-all duration-300">
-                <div className="flex justify-between items-center max-w-6xl mx-auto h-14">
+                {/* Tab Content */}
+                <div className="min-h-[500px]">
+                    {activeTab === 'expenses' && (
+                        <ExpensesTab
+                            expenses={expenses}
+                            participants={participants}
+                            currency={trip?.currency || 'INR'}
+                            currentUserId={currentUser}
+                            isOwner={isOwner}
+                            balances={balances}
+                            selectedExpenseIds={selectedExpenseIds}
+                            onAddExpense={() => {
+                                setExpenseToEdit(null)
+                                setSettleData(null)
+                                setShowAddExpense(true)
+                            }}
+                            onEditExpense={(expense) => {
+                                setExpenseToEdit(expense)
+                                setShowAddExpense(true)
+                            }}
+                            onDeleteExpense={handleDelete}
+                            onRemoveMember={handleRemoveMember}
+                            onEditMember={handleEditMember}
+                            onAddMember={() => setShowAddMember(true)}
+                            onToggleSelectExpense={handleToggleSelectExpense}
+                            onSelectAllDate={handleSelectAllDate}
+                            onBulkDelete={handleBulkDelete}
+                            onBulkCategoryChange={handleBulkCategoryChange}
+                            onDeleteAllExpenses={handleDeleteAllExpenses}
+                            getParticipantName={getParticipantName}
+                            categories={trip.categories}
+                        />
+                    )}
 
-                    {/* Left: Home Button & Title */}
-                    <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => navigate('/dashboard')}
-                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full transition"
-                            title="Go to Dashboard"
-                        >
-                            <Home className="w-5 h-5" />
-                        </button>
-                        <h2 className="text-xl font-bold text-gray-800 dark:text-white hidden sm:block truncate max-w-[200px]">{trip.title}</h2>
-                    </div>
+                    {activeTab === 'balances' && (
+                        <BalancesTab
+                            balances={balances}
+                            settlements={settlements}
+                            settledHistory={settledHistory}
+                            currency={trip?.currency || 'INR'}
+                            onSettle={handleSettle}
+                            onUndoSettlement={handleDelete}
+                            currentUser={currentUser}
+                        />
+                    )}
 
-                    {/* Center: Tabs */}
-                    <div className="flex gap-6 absolute left-1/2 -translate-x-1/2">
-                        <button
-                            onClick={() => setActiveTab('expenses')}
-                            className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'expenses' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                        >
-                            Expenses
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('balances')}
-                            className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'balances' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                        >
-                            Balances
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('snapshot')}
-                            className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'snapshot' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                        >
-                            Snapshot
-                        </button>
-                    </div>
+                    {activeTab === 'snapshot' && (
+                        <Suspense fallback={
+                            <div className="flex justify-center p-12">
+                                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                            </div>
+                        }>
+                            <TripSnapshotTab
+                                trip={trip}
+                                expenses={expenses}
+                                participants={participants}
+                                currency={trip?.currency || 'INR'}
+                                getParticipantName={getParticipantName}
+                                balances={balances}
+                                settlements={settlements}
+                            />
+                        </Suspense>
+                    )}
 
-                    {/* Right: Profile Button */}
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setShowProfileModal(true)}
-                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full transition"
-                            title="Profile Settings"
-                        >
-                            <User className="w-5 h-5" />
-                        </button>
-                    </div>
                 </div>
             </div>
 
-            {/* Content Area */}
-            <div className="p-4 pt-6">
-
-                {activeTab === 'expenses' && (
-                    <ExpensesTab
-                        expenses={expenses}
-                        participants={participants}
-                        currency={trip.currency}
-                        currentUserId={currentUser}
-                        isOwner={isOwner || false}
-                        balances={balances}
-                        selectedExpenseIds={selectedExpenseIds}
-                        onAddExpense={() => {
-                            setExpenseToEdit(null)
-                            setSettleData(null)
-                            setShowAddExpense(true)
-                        }}
-                        onEditExpense={(expense) => {
-                            setExpenseToEdit(expense)
-                            setShowAddExpense(true)
-                        }}
-                        onDeleteExpense={handleDelete}
-                        onRemoveMember={handleRemoveMember}
-                        onEditMember={handleEditMember}
-                        onAddMember={() => setShowAddMember(true)}
-                        onToggleSelectExpense={handleToggleSelectExpense}
-                        onSelectAllDate={handleSelectAllDate}
-                        onBulkDelete={handleBulkDelete}
-                        onBulkCategoryChange={handleBulkCategoryChange}
-                        onDeleteAllExpenses={handleDeleteAllExpenses}
-                        getParticipantName={getParticipantName}
-                        categories={trip.categories}
-                    />
-                )}
-
-                {activeTab === 'balances' && (
-                    <BalancesTab
-                        balances={balances}
-                        settlements={settlements}
-                        currency={trip.currency}
-                        onSettle={handleSettle}
-                        currentUser={currentUser}
-                    />
-                )}
-
-                {activeTab === 'snapshot' && (
-                    <Suspense fallback={
-                        <div className="flex justify-center p-12">
-                            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-                        </div>
-                    }>
-                        <TripSnapshotTab
-                            trip={trip}
-                            expenses={expenses}
-                            participants={participants}
-                            currency={trip.currency}
-                            getParticipantName={getParticipantName}
-                            balances={balances}
-                            settlements={settlements}
-                        />
-                    </Suspense>
-                )}
-
-            </div>
-
-            {/* Modals */}
+            {/* Modals outside max-w container */}
             {
                 showAddExpense && (
                     <Suspense fallback={null}>
                         <AddExpenseModal
                             tripId={id!}
                             participants={participants}
-                            currency={trip.currency}
-                            onClose={() => setShowAddExpense(false)}
+                            currency={trip?.currency || 'INR'}
+                            onClose={() => {
+                                setShowAddExpense(false)
+                                setExpenseToEdit(null)
+                            }}
                             onSuccess={handleSaveExpenseSuccess}
                             expenseToEdit={expenseToEdit}
                             defaultValues={settleData}
-                            categories={trip.categories}
+                            categories={Array.from(new Set([...(trip.categories || ['Food', 'Transport', 'Accommodation', 'Entertainment', 'Other']), 'Settlement']))}
                         />
                     </Suspense>
                 )

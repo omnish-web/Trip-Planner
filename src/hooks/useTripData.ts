@@ -12,6 +12,7 @@ export interface Trip {
     currency: string
     user_role: string
     categories?: string[]
+    settled_history?: any[]
 }
 
 interface Expense {
@@ -202,12 +203,28 @@ export function useUpdateMemberRole() {
 }
 
 // 7. Fetch Current User (Cached)
+// 7. Fetch Current User (Cached)
 export function useCurrentUser() {
     return useQuery({
         queryKey: ['currentUser'],
         queryFn: async () => {
-            const { data } = await supabase.auth.getUser()
-            return data.user?.id || null
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return null
+
+            // Fetch profile data to get up-to-date name
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('full_name')
+                .eq('id', user.id)
+                .single()
+
+            return {
+                ...user,
+                user_metadata: {
+                    ...user.user_metadata,
+                    full_name: profile?.full_name || user.user_metadata.full_name
+                }
+            }
         },
         staleTime: 1000 * 60 * 60, // 1 hour
         refetchOnWindowFocus: false,

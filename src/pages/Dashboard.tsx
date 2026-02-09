@@ -14,11 +14,11 @@ import { useTheme } from '../hooks/useTheme'
 
 
 export default function Dashboard() {
-    const { data: userId = null } = useCurrentUser()
     const navigate = useNavigate()
     const queryClient = useQueryClient()
 
-    const { data: trips = [], isLoading, error } = useTrips(userId)
+    const { data: user = null } = useCurrentUser()
+    const { data: trips = [], isLoading, error } = useTrips(user?.id || null)
 
     const { isDark, toggleTheme } = useTheme()
 
@@ -28,6 +28,9 @@ export default function Dashboard() {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [tripToDelete, setTripToDelete] = useState<Trip | null>(null)
     const [expenseCount, setExpenseCount] = useState<number | null>(null)
+
+    // Derived User display name
+    const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveler'
 
     const confirmDelete = async (e: React.MouseEvent, trip: Trip) => {
         e.stopPropagation()
@@ -92,12 +95,24 @@ export default function Dashboard() {
                 <h1 className="text-xl font-bold tracking-tight">Trip<span className="text-blue-600 dark:text-blue-400">Planner</span></h1>
 
                 <div className="flex items-center gap-3">
+                    {/* User Name Display */}
+                    <div className="hidden sm:flex flex-col items-end mr-2">
+                        <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">Welcome</span>
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200 max-w-[150px] truncate">
+                            {userName}
+                        </span>
+                    </div>
+
                     <button
                         onClick={() => setShowProfileModal(true)}
-                        className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-300"
+                        className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-300 relative group"
                         title="Edit Profile"
                     >
                         <User className="w-5 h-5" />
+                        {/* Tooltip for user name on mobile */}
+                        <div className="absolute top-full right-0 mt-2 p-2 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap sm:hidden z-10">
+                            {userName}
+                        </div>
                     </button>
 
                     <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-600 dark:text-gray-300">
@@ -140,7 +155,7 @@ export default function Dashboard() {
                     )}
 
                     {/* Grid */}
-                    {isLoading || !userId ? (
+                    {isLoading || !user ? (
                         <div className="flex justify-center items-center h-64">
                             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                         </div>

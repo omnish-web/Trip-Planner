@@ -7,7 +7,6 @@ interface TripSnapshotTabProps {
     trip: any
     expenses: any[]
     participants: any[]
-    currency: string
     getParticipantName: (id: string) => string
     balances: {
         participantId: string
@@ -19,6 +18,7 @@ interface TripSnapshotTabProps {
         to: string
         amount: number
     }[]
+    currency: string
 }
 
 export default function TripSnapshotTab({
@@ -27,22 +27,34 @@ export default function TripSnapshotTab({
     participants,
     currency,
     getParticipantName,
-    settlements
+    settlements,
+    balances
 }: TripSnapshotTabProps) {
 
     // Calculate Trip Summary
-    const totalCost = expenses.reduce((sum, e) => sum + e.amount, 0)
+    const validExpenses = expenses.filter(e => e.category !== 'Settlement' && e.title !== 'Settlement')
+    const totalCost = validExpenses.reduce((sum, e) => sum + e.amount, 0)
     const startDate = trip.start_date ? format(parseISO(trip.start_date), 'MMM d, yyyy') : 'TBD'
     const endDate = trip.end_date ? format(parseISO(trip.end_date), 'MMM d, yyyy') : 'TBD'
     const duration = trip.start_date && trip.end_date
         ? Math.ceil((new Date(trip.end_date).getTime() - new Date(trip.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
         : 1
 
-    // Calculate amount paid by each participant
+    // Calculate amount paid by each participant (excluding settlements)
     const amountPaidByParticipant: Record<string, number> = {}
     participants.forEach(p => amountPaidByParticipant[p.id] = 0)
-    expenses.forEach(expense => {
+    validExpenses.forEach(expense => {
         amountPaidByParticipant[expense.paid_by] = (amountPaidByParticipant[expense.paid_by] || 0) + expense.amount
+    })
+
+    // Calculate each participant's share of trip expenses (from splits)
+    const shareOfExpenses: Record<string, number> = {}
+    participants.forEach(p => shareOfExpenses[p.id] = 0)
+    validExpenses.forEach(expense => {
+        const splits = expense.expense_splits || []
+        splits.forEach((split: any) => {
+            shareOfExpenses[split.participant_id] = (shareOfExpenses[split.participant_id] || 0) + split.amount
+        })
     })
 
     // Group expenses by date for day-wise report
@@ -255,6 +267,127 @@ export default function TripSnapshotTab({
             drawLine()
             y += 5
 
+            // ============ FINAL COST PER MEMBER ============
+            checkPageBreak(40)
+            pdf.setFontSize(14)
+            pdf.setFont('helvetica', 'bold')
+            pdf.setTextColor(30, 30, 30)
+            pdf.text('FINAL COST PER MEMBER', margin, y)
+            y += 5
+            pdf.setFontSize(9)
+            pdf.setFont('helvetica', 'normal')
+            pdf.setTextColor(100, 100, 100)
+            pdf.text('After all settlements, this is what each member actually spent on the trip', margin, y)
+            y += 8
+
+            // Table header
+            pdf.setFontSize(10)
+            pdf.setFont('helvetica', 'bold')
+            pdf.setTextColor(80, 80, 80)
+            pdf.setFillColor(245, 245, 245)
+            pdf.rect(margin, y - 4, contentWidth, 7, 'F')
+            pdf.text('#', margin + 3, y)
+            pdf.text('Name', margin + 12, y)
+            pdf.text('Final Cost', margin + contentWidth - 30, y, { align: 'right' })
+            pdf.text('% of Total', margin + contentWidth - 5, y, { align: 'right' })
+            y += 8
+
+            // Table rows
+            pdf.setFont('helvetica', 'normal')
+            pdf.setTextColor(50, 50, 50)
+            let finalCostIndex = 1
+            parentMembers.forEach(parent => {
+                checkPageBreak(15)
+                const parentName = parent.profiles?.full_name || parent.name || parent.profiles?.email || 'Unknown'
+                const amountPaid = amountPaidByParticipant[parent.id] || 0
+                const parentBalance = balances.find((b: any) => b.participantId === parent.id)?.amount || 0
+                const finalCost = amountPaid - parentBalance
+                const percentage = totalCost > 0 ? ((finalCost / totalCost) * 100).toFixed(1) : '0.0'
+
+                pdf.setFont('helvetica', 'bold')
+                pdf.text(`${finalCostIndex}`, margin + 3, y)
+                pdf.text(parentName, margin + 12, y)
+                pdf.setFont('helvetica', 'normal')
+                pdf.text(`${currency} ${finalCost.toLocaleString()}`, margin + contentWidth - 30, y, { align: 'right' })
+                pdf.text(`${percentage}%`, margin + contentWidth - 5, y, { align: 'right' })
+                y += 6
+
+                // Children under this parent
+                const children = getChildren(parent.id)
+                children.forEach(child => {
+                    checkPageBreak(10)
+                    const childName = child.profiles?.full_name || child.name || child.profiles?.email || 'Unknown'
+                    const childAmountPaid = amountPaidByParticipant[child.id] || 0
+                    const childBalance = balances.find((b: any) => b.participantId === child.id)?.amount || 0
+                    const childFinalCost = childAmountPaid - childBalance
+
+                    pdf.setTextColor(100, 100, 100)
+                    pdf.text(`    -`, margin + 6, y)
+                    pdf.text(childName, margin + 18, y)
+                    pdf.text(`${currency} ${childFinalCost.toLocaleString()}`, margin + contentWidth - 30, y, { align: 'right' })
+                    pdf.setTextColor(50, 50, 50)
+                    y += 6
+                })
+
+                finalCostIndex++
+            })
+
+            y += 5
+            drawLine()
+            y += 5
+
+            // ============ CATEGORY SPLIT ============
+            checkPageBreak(40)
+            pdf.setFontSize(14)
+            pdf.setFont('helvetica', 'bold')
+            pdf.setTextColor(30, 30, 30)
+            pdf.text('CATEGORY SPLIT', margin, y)
+            y += 10
+
+            if (categoryData.length === 0) {
+                pdf.setFontSize(11)
+                pdf.setFont('helvetica', 'normal')
+                pdf.setTextColor(100, 100, 100)
+                pdf.text('No expenses recorded yet.', pageWidth / 2, y, { align: 'center' })
+                y += 10
+            } else {
+                // Table header
+                pdf.setFontSize(10)
+                pdf.setFont('helvetica', 'bold')
+                pdf.setTextColor(80, 80, 80)
+                pdf.text('Category', margin + 5, y)
+                pdf.text('Amount', margin + 80, y)
+                pdf.text('Percentage', margin + 120, y)
+                y += 6
+
+                pdf.setFont('helvetica', 'normal')
+                pdf.setTextColor(50, 50, 50)
+
+                categoryData.forEach((cat, idx) => {
+                    checkPageBreak(8)
+                    const percentage = totalCost > 0 ? (cat.value / totalCost) * 100 : 0
+
+                    pdf.setFont('helvetica', 'normal')
+                    pdf.setTextColor(50, 50, 50)
+                    pdf.text(`${idx + 1}. ${cat.name}`, margin + 5, y)
+
+                    pdf.setFont('helvetica', 'bold')
+                    pdf.setTextColor(40, 80, 180)
+                    pdf.text(`${currency} ${cat.value.toLocaleString()}`, margin + 80, y)
+
+                    pdf.setFont('helvetica', 'normal')
+                    pdf.setTextColor(100, 100, 100)
+                    pdf.text(`${percentage.toFixed(1)}%`, margin + 120, y)
+                    y += 7
+                })
+            }
+
+            y += 5
+
+            // ============ START NEW PAGE FOR DAY-WISE TRANSACTIONS ============
+            pdf.addPage()
+            y = margin
+
             // ============ DAY-WISE TRANSACTIONS ============
             checkPageBreak(30)
             pdf.setFontSize(14)
@@ -395,56 +528,6 @@ export default function TripSnapshotTab({
             y += 5
             drawLine()
             y += 5
-
-            // ============ CATEGORY SPLIT ============
-            checkPageBreak(40)
-            pdf.setFontSize(14)
-            pdf.setFont('helvetica', 'bold')
-            pdf.setTextColor(30, 30, 30)
-            pdf.text('CATEGORY SPLIT', margin, y)
-            y += 10
-
-            if (categoryData.length === 0) {
-                pdf.setFontSize(11)
-                pdf.setFont('helvetica', 'normal')
-                pdf.setTextColor(100, 100, 100)
-                pdf.text('No expenses recorded yet.', pageWidth / 2, y, { align: 'center' })
-                y += 10
-            } else {
-                // Table header
-                pdf.setFontSize(10)
-                pdf.setFont('helvetica', 'bold')
-                pdf.setTextColor(80, 80, 80)
-                pdf.text('Category', margin + 5, y)
-                pdf.text('Amount', margin + 80, y)
-                pdf.text('Percentage', margin + 120, y)
-                y += 6
-
-                pdf.setFont('helvetica', 'normal')
-                pdf.setTextColor(50, 50, 50)
-
-                categoryData.forEach((cat, idx) => {
-                    checkPageBreak(8)
-                    const percentage = totalCost > 0 ? (cat.value / totalCost) * 100 : 0
-
-                    pdf.setFont('helvetica', 'normal')
-                    pdf.setTextColor(50, 50, 50)
-                    pdf.text(`${idx + 1}. ${cat.name}`, margin + 5, y)
-
-                    pdf.setFont('helvetica', 'bold')
-                    pdf.setTextColor(40, 80, 180)
-                    pdf.text(`${currency} ${cat.value.toLocaleString()}`, margin + 80, y)
-
-                    pdf.setFont('helvetica', 'normal')
-                    pdf.setTextColor(100, 100, 100)
-                    pdf.text(`${percentage.toFixed(1)}%`, margin + 120, y)
-                    y += 7
-                })
-            }
-
-            y += 5
-            drawLine()
-            y += 8
 
             // ============ FOOTER ============
             pdf.setFontSize(9)
@@ -675,7 +758,7 @@ export default function TripSnapshotTab({
 
                 {/* RIGHT: Category Split (2 columns) */}
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="glass-panel p-6 sticky top-20">
+                    <div className="glass-panel p-6">
                         <h3 className="font-bold text-gray-700 dark:text-gray-200 mb-4 text-lg">Category Split</h3>
                         <div className="space-y-4">
                             {categoryData.length === 0 ? (
@@ -747,6 +830,98 @@ export default function TripSnapshotTab({
                                 </div>
                             </div>
                         )}
+                    </div>
+
+                    {/* Final Cost Per Member (After Settlements) */}
+                    <div className="glass-panel p-6">
+                        <h3 className="font-bold text-gray-700 dark:text-gray-200 mb-4 text-lg">Final Cost Per Member</h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                            After all settlements, this is what each member actually spent on the trip
+                        </p>
+                        <div className="space-y-3">
+                            {parentMembers.map(parent => {
+                                const children = getChildren(parent.id)
+                                const parentName = parent.profiles?.full_name || parent.name || parent.profiles?.email || 'Unknown'
+
+                                // Show each member's share of trip expenses (unchanging amount)
+                                const memberShare = shareOfExpenses[parent.id] || 0
+                                const parentBalance = balances.find(b => b.participantId === parent.id)?.amount || 0
+                                const isSettled = Math.abs(parentBalance) < 0.01
+
+                                return (
+                                    <div key={parent.id}>
+                                        {/* Parent */}
+                                        <div className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${parent.role === 'owner' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                                                    {(parentName || 'G')[0]}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-medium text-gray-800 dark:text-white">
+                                                        {parentName}
+                                                    </span>
+                                                    {isSettled && (
+                                                        <span className="text-[10px] px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full font-medium">
+                                                            Settled
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {children.length > 0 && (
+                                                    <span className="text-[10px] text-purple-500">+{children.length}</span>
+                                                )}
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="font-mono text-sm font-bold text-gray-800 dark:text-white">
+                                                    {currency} {memberShare.toFixed(0)}
+                                                </div>
+                                                <div className="text-xs text-gray-400">
+                                                    {totalCost > 0 ? ((memberShare / totalCost) * 100).toFixed(1) : 0}% of total
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Children */}
+                                        {children.map(child => {
+                                            const childName = child.profiles?.full_name || child.name || child.profiles?.email || 'Unknown'
+                                            const childShare = shareOfExpenses[child.id] || 0
+                                            const childBalance = balances.find(b => b.participantId === child.id)?.amount || 0
+                                            const childIsSettled = Math.abs(childBalance) < 0.01
+
+                                            return (
+                                                <div key={child.id} className="flex items-center justify-between p-2 pl-10 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-purple-100 text-purple-600 dark:bg-purple-900/30">
+                                                            {(childName || 'C')[0]}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs text-gray-600 dark:text-gray-400">
+                                                                {childName}
+                                                            </span>
+                                                            {childIsSettled && (
+                                                                <span className="text-[9px] px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full font-medium">
+                                                                    Settled
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="font-mono text-xs font-medium text-gray-600 dark:text-gray-400">
+                                                        {currency} {childShare.toFixed(0)}
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )
+                            })}
+                        </div>
+
+                        {/* Summary */}
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Trip Cost</span>
+                                <span className="font-mono font-bold text-gray-800 dark:text-white">{currency} {totalCost.toFixed(0)}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
