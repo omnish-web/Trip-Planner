@@ -10,6 +10,7 @@ export default function Auth() {
     const [password, setPassword] = useState('')
     const [fullName, setFullName] = useState('')
     const [isSignUp, setIsSignUp] = useState(false)
+    const [isResetPassword, setIsResetPassword] = useState(false)
     const [message, setMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null)
     const navigate = useNavigate()
 
@@ -19,7 +20,13 @@ export default function Auth() {
         setMessage(null)
 
         try {
-            if (isSignUp) {
+            if (isResetPassword) {
+                const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                    redirectTo: `${window.location.origin}/dashboard`,
+                })
+                if (error) throw error
+                setMessage({ type: 'success', text: 'Password reset link sent! Check your email.' })
+            } else if (isSignUp) {
                 const { error } = await supabase.auth.signUp({
                     email,
                     password,
@@ -54,7 +61,11 @@ export default function Auth() {
                         Trip<span className="text-blue-600 dark:text-blue-400">Planner</span>
                     </h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {isSignUp ? 'Create an account to start planning' : 'Welcome back to your trips'}
+                        {isResetPassword
+                            ? 'Reset your password'
+                            : isSignUp
+                                ? 'Create an account to start planning'
+                                : 'Welcome back to your trips'}
                     </p>
                 </div>
 
@@ -68,7 +79,7 @@ export default function Auth() {
                 )}
 
                 <form onSubmit={handleAuth} className="space-y-4">
-                    {isSignUp && (
+                    {isSignUp && !isResetPassword && (
                         <div>
                             <label className="compact-label">Full Name</label>
                             <input
@@ -97,20 +108,33 @@ export default function Auth() {
                         </div>
                     </div>
 
-                    <div>
-                        <label className="compact-label">Password</label>
-                        <div className="relative">
-                            <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                            <input
-                                type="password"
-                                required
-                                className="compact-input !pl-10"
-                                placeholder="••••••••"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
+                    {!isResetPassword && (
+                        <div>
+                            <label className="compact-label">Password</label>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                <input
+                                    type="password"
+                                    required={!isResetPassword}
+                                    className="compact-input !pl-10"
+                                    placeholder="••••••••"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
+                            </div>
+                            {!isSignUp && (
+                                <div className="flex justify-end mt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsResetPassword(true)}
+                                        className="text-xs text-blue-600 hover:text-blue-500 dark:text-blue-400 hover:underline"
+                                    >
+                                        Forgot Password?
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                    </div>
+                    )}
 
                     <button
                         type="submit"
@@ -119,7 +143,7 @@ export default function Auth() {
                     >
                         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (
                             <>
-                                {isSignUp ? 'Sign Up' : 'Sign In'}
+                                {isResetPassword ? 'Send Reset Link' : (isSignUp ? 'Sign Up' : 'Sign In')}
                                 <ArrowRight className="h-4 w-4" />
                             </>
                         )}
@@ -127,17 +151,28 @@ export default function Auth() {
                 </form>
 
                 <div className="mt-6 text-center text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">
-                        {isSignUp ? 'Already have an account?' : "Don't have an account?"}
-                    </span>
-                    <button
-                        onClick={() => setIsSignUp(!isSignUp)}
-                        className="ml-2 font-semibold text-blue-600 hover:text-blue-500 dark:text-blue-400 hover:underline"
-                    >
-                        {isSignUp ? 'Sign in' : 'Sign up'}
-                    </button>
+                    {isResetPassword ? (
+                        <button
+                            onClick={() => setIsResetPassword(false)}
+                            className="font-semibold text-blue-600 hover:text-blue-500 dark:text-blue-400 hover:underline"
+                        >
+                            Back to Sign In
+                        </button>
+                    ) : (
+                        <>
+                            <span className="text-gray-500 dark:text-gray-400">
+                                {isSignUp ? 'Already have an account?' : "Don't have an account?"}
+                            </span>
+                            <button
+                                onClick={() => setIsSignUp(!isSignUp)}
+                                className="ml-2 font-semibold text-blue-600 hover:text-blue-500 dark:text-blue-400 hover:underline"
+                            >
+                                {isSignUp ? 'Sign in' : 'Sign up'}
+                            </button>
+                        </>
+                    )}
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     )
 }

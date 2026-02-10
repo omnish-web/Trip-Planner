@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, Loader2, User, Save } from 'lucide-react'
+import { X, Loader2, User, Save, Lock, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface EditProfileModalProps {
     onClose: () => void
@@ -13,6 +13,11 @@ export default function EditProfileModal({ onClose, onSuccess }: EditProfileModa
     const [email, setEmail] = useState('')
     const [userId, setUserId] = useState<string | null>(null)
     const [message, setMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null)
+
+    const [showPasswordChange, setShowPasswordChange] = useState(false)
+    const [newPassword, setNewPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
+    const [passwordError, setPasswordError] = useState('')
 
     useEffect(() => {
         fetchProfile()
@@ -54,6 +59,23 @@ export default function EditProfileModal({ onClose, onSuccess }: EditProfileModa
                 .eq('id', userId)
 
             if (error) throw error
+
+            // Handle Password Change
+            if (showPasswordChange) {
+                if (newPassword !== confirmPassword) {
+                    throw new Error("Passwords do not match")
+                }
+
+                // Password Policy Validation
+                if (newPassword.length < 6) throw new Error("Password must be at least 6 characters long")
+                if (!/[A-Z]/.test(newPassword)) throw new Error("Password must contain at least one uppercase letter")
+                if (!/[a-z]/.test(newPassword)) throw new Error("Password must contain at least one lowercase letter")
+                if (!/[0-9]/.test(newPassword)) throw new Error("Password must contain at least one number")
+                if (!/[!@#$%^&*(),.?":{}|<>]/.test(newPassword)) throw new Error("Password must contain at least one special character")
+
+                const { error: passwordUpdateError } = await supabase.auth.updateUser({ password: newPassword })
+                if (passwordUpdateError) throw passwordUpdateError
+            }
 
             setMessage({ type: 'success', text: 'Profile updated successfully!' })
             setTimeout(() => {
@@ -115,6 +137,58 @@ export default function EditProfileModal({ onClose, onSuccess }: EditProfileModa
                             value={fullName}
                             onChange={e => setFullName(e.target.value)}
                         />
+                    </div>
+
+                    {/* Change Password Section */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                        <button
+                            type="button"
+                            onClick={() => setShowPasswordChange(!showPasswordChange)}
+                            className="flex items-center justify-between w-full text-left text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        >
+                            <div className="flex items-center gap-2">
+                                <Lock className="w-4 h-4" />
+                                Change Password
+                            </div>
+                            {showPasswordChange ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+
+                        {showPasswordChange && (
+                            <div className="mt-4 space-y-4 animate-fade-in pl-1">
+                                <div>
+                                    <label className="compact-label">New Password</label>
+                                    <input
+                                        type="password"
+                                        className="compact-input"
+                                        placeholder="Min 6 chars, A-Z, a-z, 0-9, special char"
+                                        value={newPassword}
+                                        onChange={e => {
+                                            setNewPassword(e.target.value)
+                                            setPasswordError('')
+                                        }}
+                                    />
+                                    <p className="text-[10px] text-gray-500 mt-1">
+                                        Must have 1 Uppercase, 1 Lowercase, 1 Number, 1 Special Char, Min 6 chars.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="compact-label">Confirm Password</label>
+                                    <input
+                                        type="password"
+                                        className="compact-input"
+                                        placeholder="Retype new password"
+                                        value={confirmPassword}
+                                        onChange={e => {
+                                            setConfirmPassword(e.target.value)
+                                            setPasswordError('')
+                                        }}
+                                    />
+                                </div>
+                                {passwordError && (
+                                    <p className="text-xs text-red-500">{passwordError}</p>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     <button
