@@ -43,6 +43,7 @@ export default function AddExpenseModal({ tripId, participants, currency, onClos
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]) // Default to today
     const [splitType, setSplitType] = useState<'equal' | 'exact'>(defaultValues?.splits ? 'exact' : 'equal')
     const [splits, setSplits] = useState<Record<string, number>>(defaultValues?.splits || {})
+    const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([])
     const [loading, setLoading] = useState(false)
 
     useEffect(() => {
@@ -58,6 +59,12 @@ export default function AddExpenseModal({ tripId, participants, currency, onClos
             })
         }
     }, [expenseToEdit, participants, defaultValues])
+
+    // Initialize selected participants to all parent members by default
+    useEffect(() => {
+        const parentIds = participants.filter(p => !p.parent_id).map(p => p.id)
+        setSelectedParticipantIds(parentIds)
+    }, [participants])
 
     const fetchExpenseDetails = async (id: string) => {
         setLoading(true)
@@ -120,12 +127,23 @@ export default function AddExpenseModal({ tripId, participants, currency, onClos
             const finalSplits: { participant_id: string, amount: number }[] = []
 
             if (splitType === 'equal') {
-                // Split among ALL members (including children)
-                const perPersonShare = numAmount / participants.length
+                // Validate at least one member is selected
+                if (selectedParticipantIds.length === 0) {
+                    throw new Error('Please select at least one member to split with')
+                }
+
+                // Get selected participants and their children
+                const selectedWithChildren = participants.filter(p => {
+                    // Include if directly selected OR if parent is selected
+                    return selectedParticipantIds.includes(p.id) ||
+                        (p.parent_id && selectedParticipantIds.includes(p.parent_id))
+                })
+
+                const perPersonShare = numAmount / selectedWithChildren.length
 
                 // Consolidate: child shares go to their parent
                 const consolidatedSplits: Record<string, number> = {}
-                participants.forEach(p => {
+                selectedWithChildren.forEach(p => {
                     // If this participant has a parent, add their share to the parent
                     // Otherwise, they pay their own share
                     const targetId = p.parent_id || p.id
@@ -326,9 +344,54 @@ export default function AddExpenseModal({ tripId, participants, currency, onClos
                             </button>
                         </div>
                         {amount && splitType === 'equal' && (
-                            <p className="mt-2 text-xs text-center text-gray-500">
-                                <strong>{(parseFloat(amount) / participants.length).toFixed(2)}</strong> / person
-                            </p>
+                            <div className="mt-3 space-y-2">
+                                <div className="max-h-32 overflow-y-auto pr-1 custom-scroll space-y-1.5">
+                                    {participants.filter(p => !p.parent_id).map(parent => {
+                                        const children = participants.filter(c => c.parent_id === parent.id)
+                                        const isSelected = selectedParticipantIds.includes(parent.id)
+
+                                        return (
+                                            <div key={parent.id}>
+                                                <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 p-1.5 rounded">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setSelectedParticipantIds(prev => [...prev, parent.id])
+                                                            } else {
+                                                                setSelectedParticipantIds(prev => prev.filter(id => id !== parent.id))
+                                                            }
+                                                        }}
+                                                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    <span className="text-sm flex-1">
+                                                        {parent.profiles?.full_name || parent.name || parent.profiles?.email || 'Guest'}
+                                                        {children.length > 0 && (
+                                                            <span className="text-xs text-gray-500 ml-1">
+                                                                (+ {children.map(c => c.name).join(', ')})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                                {selectedParticipantIds.length > 0 && (
+                                    <p className="text-xs text-center text-gray-500 pt-1 border-t border-gray-200 dark:border-gray-700">
+                                        <strong>
+                                            {(() => {
+                                                const selectedWithChildren = participants.filter(p =>
+                                                    selectedParticipantIds.includes(p.id) ||
+                                                    (p.parent_id && selectedParticipantIds.includes(p.parent_id))
+                                                )
+                                                return (parseFloat(amount) / selectedWithChildren.length).toFixed(2)
+                                            })()}
+                                        </strong> / person
+                                    </p>
+                                )}
+                            </div>
                         )}
                         {splitType === 'exact' && (
                             <div className="mt-3 space-y-2 max-h-40 overflow-y-auto pr-1 custom-scroll">
