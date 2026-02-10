@@ -213,193 +213,57 @@ export default function TripSnapshotTab({
             pdf.setFont('helvetica', 'bold')
             pdf.setTextColor(30, 30, 30)
             pdf.text(trip.title, pageWidth / 2, y, { align: 'center' })
-            y += 8
+            y += 7
 
-            pdf.setFontSize(11)
+            pdf.setFontSize(10)
             pdf.setFont('helvetica', 'normal')
             pdf.setTextColor(100, 100, 100)
             pdf.text(`${startDate} - ${endDate}`, pageWidth / 2, y, { align: 'center' })
-            y += 10
+            y += 8
             drawLine()
-            y += 5
+            y += 4
 
             // ============ TRIP SUMMARY ============
-            pdf.setFontSize(14)
+            pdf.setFontSize(12)
             pdf.setFont('helvetica', 'bold')
             pdf.setTextColor(30, 30, 30)
             pdf.text('TRIP SUMMARY', margin, y)
-            y += 8
+            y += 6
 
-            pdf.setFontSize(11)
+            pdf.setFontSize(10)
             pdf.setFont('helvetica', 'normal')
             pdf.setTextColor(60, 60, 60)
-            pdf.text(`Total Trip Cost: ${currency} ${totalCost.toLocaleString()}`, margin, y)
-            y += 6
-            pdf.text(`Duration: ${duration} Day${duration > 1 ? 's' : ''}`, margin, y)
-            y += 6
-            pdf.text(`Members: ${participants.length}`, margin, y)
-            y += 10
+            pdf.text(`Total Cost: ${currency} ${totalCost.toLocaleString()}   |   Duration: ${duration} Day${duration > 1 ? 's' : ''}   |   Members: ${participants.length}`, margin, y)
+            y += 8
             drawLine()
-            y += 5
-
-            // ============ MEMBERS TABLE ============
-            checkPageBreak(40)
-            pdf.setFontSize(14)
-            pdf.setFont('helvetica', 'bold')
-            pdf.setTextColor(30, 30, 30)
-            pdf.text('MEMBERS', margin, y)
-            y += 8
-
-            // Table header
-            pdf.setFontSize(10)
-            pdf.setFont('helvetica', 'bold')
-            pdf.setTextColor(80, 80, 80)
-            pdf.setFillColor(245, 245, 245)
-            pdf.rect(margin, y - 4, contentWidth, 7, 'F')
-            pdf.text('#', margin + 3, y)
-            pdf.text('Name', margin + 12, y)
-            pdf.text('Role', margin + 80, y)
-            pdf.text('Amount Paid', margin + contentWidth - 30, y, { align: 'right' })
-            y += 8
-
-            // Table rows
-            pdf.setFont('helvetica', 'normal')
-            pdf.setTextColor(50, 50, 50)
-            let memberIndex = 1
-            parentMembers.forEach(parent => {
-                checkPageBreak(15)
-                const parentName = parent.profiles?.full_name || parent.name || parent.profiles?.email || 'Unknown'
-                const amountPaid = amountPaidByParticipant[parent.id] || 0
-
-                pdf.setFont('helvetica', 'bold')
-                pdf.text(`${memberIndex}`, margin + 3, y)
-                pdf.text(parentName, margin + 12, y)
-                pdf.setFont('helvetica', 'normal')
-                pdf.text('Parent', margin + 80, y)
-                pdf.text(`${currency} ${amountPaid.toLocaleString()}`, margin + contentWidth - 30, y, { align: 'right' })
-                y += 6
-
-                // Children under this parent
-                const children = getChildren(parent.id)
-                children.forEach(child => {
-                    checkPageBreak(10)
-                    const childName = child.profiles?.full_name || child.name || child.profiles?.email || 'Unknown'
-                    const childAmountPaid = amountPaidByParticipant[child.id] || 0
-
-                    pdf.setTextColor(100, 100, 100)
-                    pdf.text(`    -`, margin + 6, y)
-                    pdf.text(childName, margin + 18, y)
-                    pdf.text('Child', margin + 80, y)
-                    pdf.text(`${currency} ${childAmountPaid.toLocaleString()}`, margin + contentWidth - 30, y, { align: 'right' })
-                    pdf.setTextColor(50, 50, 50)
-                    y += 6
-                })
-
-                memberIndex++
-            })
+            y += 4
 
             y += 5
-            drawLine()
-            y += 5
 
-            // ============ FINAL COST PER MEMBER ============
-            checkPageBreak(40)
-            pdf.setFontSize(14)
-            pdf.setFont('helvetica', 'bold')
-            pdf.setTextColor(30, 30, 30)
-            pdf.text('FINAL COST PER MEMBER', margin, y)
-            y += 5
-            pdf.setFontSize(9)
-            pdf.setFont('helvetica', 'normal')
-            pdf.setTextColor(100, 100, 100)
-            pdf.text('After all settlements, this is what each member actually spent on the trip', margin, y)
-            y += 8
-
-            // Table header
-            pdf.setFontSize(10)
-            pdf.setFont('helvetica', 'bold')
-            pdf.setTextColor(80, 80, 80)
-            pdf.setFillColor(245, 245, 245)
-            pdf.rect(margin, y - 4, contentWidth, 7, 'F')
-            pdf.text('#', margin + 3, y)
-            pdf.text('Name', margin + 12, y)
-            pdf.text('Final Cost', margin + contentWidth - 30, y, { align: 'right' })
-            pdf.text('% of Total', margin + contentWidth - 5, y, { align: 'right' })
-            y += 8
-
-            // Table rows
-            pdf.setFont('helvetica', 'normal')
-            pdf.setTextColor(50, 50, 50)
-            let finalCostIndex = 1
-            parentMembers.forEach(parent => {
-                checkPageBreak(15)
-                const parentName = parent.profiles?.full_name || parent.name || parent.profiles?.email || 'Unknown'
-                const amountPaid = amountPaidByParticipant[parent.id] || 0
-                const parentBalance = balances.find((b: any) => b.participantId === parent.id)?.amount || 0
-                const finalCost = amountPaid - parentBalance
-                const percentage = totalCost > 0 ? ((finalCost / totalCost) * 100).toFixed(1) : '0.0'
-
-                pdf.setFont('helvetica', 'bold')
-                pdf.text(`${finalCostIndex}`, margin + 3, y)
-                pdf.text(parentName, margin + 12, y)
-                pdf.setFont('helvetica', 'normal')
-                pdf.text(`${currency} ${finalCost.toLocaleString()}`, margin + contentWidth - 30, y, { align: 'right' })
-                pdf.text(`${percentage}%`, margin + contentWidth - 5, y, { align: 'right' })
-                y += 6
-
-                // Children under this parent
-                const children = getChildren(parent.id)
-                children.forEach(child => {
-                    checkPageBreak(10)
-                    const childName = child.profiles?.full_name || child.name || child.profiles?.email || 'Unknown'
-                    const childAmountPaid = amountPaidByParticipant[child.id] || 0
-                    const childBalance = balances.find((b: any) => b.participantId === child.id)?.amount || 0
-                    const childFinalCost = childAmountPaid - childBalance
-
-                    pdf.setTextColor(100, 100, 100)
-                    pdf.text(`    -`, margin + 6, y)
-                    pdf.text(childName, margin + 18, y)
-                    pdf.text(`${currency} ${childFinalCost.toLocaleString()}`, margin + contentWidth - 30, y, { align: 'right' })
-                    pdf.setTextColor(50, 50, 50)
-                    y += 6
-                })
-
-                finalCostIndex++
-            })
-
-            y += 5
-            drawLine()
-            y += 5
-
-            // ============ CATEGORY SPLIT ============
-            checkPageBreak(40)
-            pdf.setFontSize(14)
+            // ============ CATEGORY SPLIT (MOVED UP) ============
+            pdf.setFontSize(12)
             pdf.setFont('helvetica', 'bold')
             pdf.setTextColor(30, 30, 30)
             pdf.text('CATEGORY SPLIT', margin, y)
-            y += 10
+            y += 6
 
             if (categoryData.length === 0) {
-                pdf.setFontSize(11)
+                pdf.setFontSize(10)
                 pdf.setFont('helvetica', 'normal')
                 pdf.setTextColor(100, 100, 100)
                 pdf.text('No expenses recorded yet.', pageWidth / 2, y, { align: 'center' })
-                y += 10
+                y += 8
             } else {
                 // Table header
-                pdf.setFontSize(10)
+                pdf.setFontSize(9)
                 pdf.setFont('helvetica', 'bold')
                 pdf.setTextColor(80, 80, 80)
                 pdf.text('Category', margin + 5, y)
                 pdf.text('Amount', margin + 80, y)
                 pdf.text('Percentage', margin + 120, y)
-                y += 6
-
-                pdf.setFont('helvetica', 'normal')
-                pdf.setTextColor(50, 50, 50)
+                y += 5
 
                 categoryData.forEach((cat, idx) => {
-                    checkPageBreak(8)
                     const percentage = totalCost > 0 ? (cat.value / totalCost) * 100 : 0
 
                     pdf.setFont('helvetica', 'normal')
@@ -413,14 +277,211 @@ export default function TripSnapshotTab({
                     pdf.setFont('helvetica', 'normal')
                     pdf.setTextColor(100, 100, 100)
                     pdf.text(`${percentage.toFixed(1)}%`, margin + 120, y)
-                    y += 7
+                    y += 5
                 })
             }
+
+            y += 4
+            drawLine()
+            y += 4
+
+            // ============ MEMBERS TABLE ============
+            pdf.setFontSize(12)
+            pdf.setFont('helvetica', 'bold')
+            pdf.setTextColor(30, 30, 30)
+            pdf.text('MEMBERS', margin, y)
+            y += 6
+
+            // Table header
+            pdf.setFontSize(9)
+            pdf.setFont('helvetica', 'bold')
+            pdf.setTextColor(80, 80, 80)
+            pdf.setFillColor(245, 245, 245)
+            pdf.rect(margin, y - 4, contentWidth, 6, 'F')
+            pdf.text('#', margin + 3, y)
+            pdf.text('Name', margin + 12, y)
+            pdf.text('Role', margin + 80, y)
+            pdf.text('Amount Paid', margin + contentWidth - 30, y, { align: 'right' })
+            y += 6
+
+            // Table rows
+            pdf.setFont('helvetica', 'normal')
+            pdf.setTextColor(50, 50, 50)
+            let memberIndex = 1
+            parentMembers.forEach(parent => {
+                const parentName = parent.profiles?.full_name || parent.name || parent.profiles?.email || 'Unknown'
+                const amountPaid = amountPaidByParticipant[parent.id] || 0
+
+                pdf.setFont('helvetica', 'bold')
+                pdf.text(`${memberIndex}`, margin + 3, y)
+                pdf.text(parentName, margin + 12, y)
+                pdf.setFont('helvetica', 'normal')
+                pdf.text('Parent', margin + 80, y)
+                pdf.text(`${currency} ${amountPaid.toLocaleString()}`, margin + contentWidth - 30, y, { align: 'right' })
+                y += 5
+
+                // Children under this parent
+                const children = getChildren(parent.id)
+                children.forEach(child => {
+                    const childName = child.profiles?.full_name || child.name || child.profiles?.email || 'Unknown'
+                    const childAmountPaid = amountPaidByParticipant[child.id] || 0
+
+                    pdf.setTextColor(100, 100, 100)
+                    pdf.text(`    -`, margin + 6, y)
+                    pdf.text(childName, margin + 18, y)
+                    pdf.text('Child', margin + 80, y)
+                    pdf.text(`${currency} ${childAmountPaid.toLocaleString()}`, margin + contentWidth - 30, y, { align: 'right' })
+                    pdf.setTextColor(50, 50, 50)
+                    y += 5
+                })
+
+                memberIndex++
+            })
+
+            y += 4
+            drawLine()
+            y += 4
+
+            // ============ FINAL COST PER MEMBER (NEW DESIGN) ============
+            // checkPageBreak(40) // Removed to force start on Page 1 if possible
+            pdf.setFontSize(12)
+            pdf.setFont('helvetica', 'bold')
+            pdf.setTextColor(30, 30, 30)
+            pdf.text('FINAL COST PER MEMBER', margin, y)
+            y += 5
+            pdf.setFontSize(8)
+            pdf.setFont('helvetica', 'normal')
+            pdf.setTextColor(100, 100, 100)
+            pdf.text('Each member\'s share of trip expenses with category-wise breakdown', margin, y)
+            y += 8
+
+            parentMembers.forEach(parent => {
+                const parentName = parent.profiles?.full_name || parent.name || parent.profiles?.email || 'Unknown'
+                const parentShare = shareOfExpenses[parent.id] || 0
+                const parentBalance = balances.find((b: any) => b.participantId === parent.id)?.amount || 0
+                const isSettled = Math.abs(parentBalance) < 0.01
+
+                const children = getChildren(parent.id)
+
+                // Skip if parent and all children have 0 share
+                if (parentShare === 0 && children.every(child => (shareOfExpenses[child.id] || 0) === 0)) {
+                    return
+                }
+
+                // Check page break for Parent Block (estimate height)
+                // checkPageBreak(30) // Minimized check
+
+                // Parent Header
+                pdf.setFontSize(10)
+                pdf.setFont('helvetica', 'bold')
+                pdf.setTextColor(40, 40, 40)
+                pdf.text(parentName, margin + 2, y)
+
+                // Parent Share & %
+                const percentage = totalCost > 0 ? ((parentShare / totalCost) * 100).toFixed(1) : '0.0'
+                pdf.text(`${currency} ${parentShare.toFixed(0)}`, margin + contentWidth - 30, y, { align: 'right' })
+
+                pdf.setFontSize(9)
+                pdf.setFont('helvetica', 'normal')
+                pdf.setTextColor(100, 100, 100)
+                pdf.text(`${percentage}%`, margin + contentWidth - 5, y, { align: 'right' })
+
+                if (isSettled) {
+                    pdf.setTextColor(34, 197, 94) // Green
+                    pdf.setFontSize(8)
+                    pdf.text('(Settled)', margin + 60, y)
+                }
+
+                y += 6
+
+                // Parent Categories
+                const parentCategorySpend: Record<string, number> = {}
+                validExpenses.forEach(expense => {
+                    const splits = expense.expense_splits || []
+                    const parentSplit = splits.find((s: any) => s.participant_id === parent.id)
+                    if (parentSplit) {
+                        parentCategorySpend[expense.category] = (parentCategorySpend[expense.category] || 0) + parentSplit.amount
+                    }
+                })
+                const parentCategories = Object.entries(parentCategorySpend).sort((a, b) => b[1] - a[1])
+
+                if (parentCategories.length > 0) {
+                    parentCategories.forEach(([cat, amount]) => {
+                        checkPageBreak(5)
+                        pdf.setFontSize(9)
+                        pdf.setFont('helvetica', 'normal')
+                        pdf.setTextColor(100, 100, 100) // Gray
+                        pdf.text(`- ${cat}`, margin + 8, y)
+                        pdf.text(`${currency} ${amount.toFixed(0)}`, margin + contentWidth - 30, y, { align: 'right' })
+                        y += 4
+                    })
+                }
+                y += 2
+
+                // Children
+                children.forEach(child => {
+                    const childName = child.profiles?.full_name || child.name || child.profiles?.email || 'Unknown'
+                    const childShare = shareOfExpenses[child.id] || 0
+                    const childBalance = balances.find((b: any) => b.participantId === child.id)?.amount || 0
+                    const childIsSettled = Math.abs(childBalance) < 0.01
+
+                    if (childShare === 0) return
+
+                    checkPageBreak(15)
+
+                    // Child Header
+                    y += 2
+                    pdf.setFontSize(9)
+                    pdf.setFont('helvetica', 'bold')
+                    pdf.setTextColor(80, 80, 80)
+                    pdf.text(childName, margin + 12, y) // Indented
+
+                    pdf.text(`${currency} ${childShare.toFixed(0)}`, margin + contentWidth - 30, y, { align: 'right' })
+
+                    if (childIsSettled) {
+                        pdf.setTextColor(34, 197, 94)
+                        pdf.setFontSize(8)
+                        pdf.text('(Settled)', margin + 60, y)
+                    }
+                    y += 5
+
+                    // Child Categories
+                    const childCategorySpend: Record<string, number> = {}
+                    validExpenses.forEach(expense => {
+                        const splits = expense.expense_splits || []
+                        const childSplit = splits.find((s: any) => s.participant_id === child.id)
+                        if (childSplit) {
+                            childCategorySpend[expense.category] = (childCategorySpend[expense.category] || 0) + childSplit.amount
+                        }
+                    })
+                    const childCategories = Object.entries(childCategorySpend).sort((a, b) => b[1] - a[1])
+
+                    if (childCategories.length > 0) {
+                        childCategories.forEach(([cat, amount]) => {
+                            checkPageBreak(5)
+                            pdf.setFontSize(9)
+                            pdf.setFont('helvetica', 'normal')
+                            pdf.setTextColor(100, 100, 100)
+                            pdf.text(`- ${cat}`, margin + 18, y)
+                            pdf.text(`${currency} ${amount.toFixed(0)}`, margin + contentWidth - 30, y, { align: 'right' })
+                            y += 4
+                        })
+                    }
+                    y += 2
+                })
+
+                y += 2
+                pdf.setDrawColor(240, 240, 240)
+                pdf.line(margin, y, pageWidth - margin, y)
+                y += 6
+            })
+
+            y += 2
 
             y += 5
 
             // ============ START NEW PAGE FOR DAY-WISE TRANSACTIONS ============
-            pdf.addPage()
+            pdf.addPage() // Force new page for Day-wise transactions
             y = margin
 
             // ============ DAY-WISE TRANSACTIONS ============
@@ -568,7 +629,7 @@ export default function TripSnapshotTab({
             pdf.setFontSize(9)
             pdf.setFont('helvetica', 'normal')
             pdf.setTextColor(150, 150, 150)
-            pdf.text(`Generated by TripPlanner â€¢ ${format(new Date(), 'MMM d, yyyy HH:mm')}`, pageWidth / 2, y, { align: 'center' })
+            pdf.text(`Generated by TripPlanner | ${format(new Date(), 'MMM d, yyyy HH:mm')}`, pageWidth / 2, y, { align: 'center' })
             y += 5
             pdf.text('A proprietary framework designed and developed by Omnish Singhal', pageWidth / 2, y, { align: 'center' })
 
