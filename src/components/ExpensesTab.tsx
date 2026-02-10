@@ -24,6 +24,8 @@ interface ExpensesTabProps {
     onDeleteAllExpenses: () => void
     getParticipantName: (id: string) => string
     categories?: string[]
+    canEdit?: boolean
+    isEnded?: boolean
 }
 
 
@@ -48,7 +50,9 @@ const ExpensesTab = React.memo(({
     onBulkCategoryChange,
     onDeleteAllExpenses,
     getParticipantName,
-    categories: _categories
+    categories: _categories,
+    canEdit = true,
+    isEnded = false
 }: ExpensesTabProps) => {
 
     // 1. Calculate Stats
@@ -87,6 +91,22 @@ const ExpensesTab = React.memo(({
     return (
         <div className="max-w-7xl mx-auto space-y-6 animate-fade-in relative pb-20">
 
+            {/* Ended Trip Warning Banner */}
+            {isEnded && (
+                <div className="glass-panel p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-900/50">
+                    <div className="flex items-center gap-3">
+                        <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0" />
+                        <div>
+                            <p className="font-bold text-orange-800 dark:text-orange-300">This trip has ended</p>
+                            <p className="text-sm text-orange-700 dark:text-orange-400 mt-0.5">
+                                All editing is disabled for everyone. {isOwner && 'As the owner, you can reopen the trip from Settings if needed.'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+
             {/* Top Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="glass-panel p-6 bg-gradient-to-br from-blue-500 to-blue-600 text-white border-none">
@@ -116,7 +136,9 @@ const ExpensesTab = React.memo(({
                             {isOwner && expenses.length > 0 && (
                                 <button
                                     onClick={onDeleteAllExpenses}
-                                    className="px-3 py-2 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg transition border border-red-200 dark:border-red-900/50 flex items-center gap-1"
+                                    disabled={!canEdit}
+                                    className="px-3 py-2 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg transition border border-red-200 dark:border-red-900/50 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title={!canEdit ? 'Trip is ended' : 'Delete all expenses'}
                                 >
                                     <AlertTriangle className="w-3 h-3" />
                                     Reset
@@ -124,7 +146,9 @@ const ExpensesTab = React.memo(({
                             )}
                             <button
                                 onClick={onAddExpense}
-                                className="btn-primary py-2 px-4 text-sm flex items-center gap-2 shadow-lg shadow-blue-500/20"
+                                disabled={!canEdit}
+                                className="btn-primary py-2 px-4 text-sm flex items-center gap-2 shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={!canEdit ? 'Trip is ended' : 'Add new expense'}
                             >
                                 <Plus className="w-4 h-4" /> Add Expense
                             </button>
@@ -147,7 +171,9 @@ const ExpensesTab = React.memo(({
                                             {isOwner && (
                                                 <button
                                                     onClick={() => onSelectAllDate(date, groupExpenses.map((e: any) => e.id))}
-                                                    className={`p-1 rounded transition-colors ${isAllSelected ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'}`}
+                                                    disabled={!canEdit}
+                                                    className={`p-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isAllSelected ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-gray-600'}`}
+                                                    title={!canEdit ? 'Trip is ended' : 'Select all for this date'}
                                                 >
                                                     {isAllSelected ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
                                                 </button>
@@ -211,7 +237,7 @@ const ExpensesTab = React.memo(({
 
                                                             {/* Individual Action (Edit Only, Delete via bulk) */}
                                                             {
-                                                                !isSelected && (isOwner || participants.find(p => p.id === expense.paid_by)?.user_id === currentUserId) && (
+                                                                !isSelected && canEdit && (isOwner || participants.find(p => p.id === expense.paid_by)?.user_id === currentUserId) && (
                                                                     <div className="flex gap-1">
                                                                         <button
                                                                             onClick={(e) => { e.stopPropagation(); onEditExpense(expense) }}
@@ -254,8 +280,9 @@ const ExpensesTab = React.memo(({
                             {isOwner && (
                                 <button
                                     onClick={onAddMember}
-                                    className="p-1.5 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/50 transition"
-                                    title="Add Member"
+                                    disabled={!canEdit}
+                                    className="p-1.5 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title={!canEdit ? 'Trip is ended' : 'Add Member'}
                                 >
                                     <Plus className="w-4 h-4" />
                                 </button>
@@ -283,8 +310,9 @@ const ExpensesTab = React.memo(({
                                                 {isOwner && (
                                                     <button
                                                         onClick={() => onEditMember(parent)}
-                                                        className="p-1 rounded-full text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
-                                                        title="Edit Member Name"
+                                                        disabled={!canEdit}
+                                                        className="p-1 rounded-full text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        title={!canEdit ? 'Trip is ended' : 'Edit Member Name'}
                                                     >
                                                         <Edit2 className="w-3 h-3" />
                                                     </button>
@@ -305,8 +333,9 @@ const ExpensesTab = React.memo(({
                                                 {isOwner && (
                                                     <button
                                                         onClick={() => onRemoveMember(parent.id, parentName)}
-                                                        className={`p-1.5 rounded-full transition-colors ${Math.abs(parentBalance) < 0.01 ? 'text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer' : 'text-gray-200 cursor-not-allowed'}`}
-                                                        title={Math.abs(parentBalance) > 0.01 ? `Cannot remove (Balance: ${parentBalance.toFixed(2)})` : "Remove Member"}
+                                                        disabled={!canEdit || Math.abs(parentBalance) > 0.01}
+                                                        className={`p-1.5 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${Math.abs(parentBalance) < 0.01 ? 'text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 cursor-pointer' : 'text-gray-200 cursor-not-allowed'}`}
+                                                        title={!canEdit ? 'Trip is ended' : Math.abs(parentBalance) > 0.01 ? `Cannot remove (Balance: ${parentBalance.toFixed(2)})` : "Remove Member"}
                                                     >
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                     </button>
@@ -328,8 +357,9 @@ const ExpensesTab = React.memo(({
                                                             {isOwner && (
                                                                 <button
                                                                     onClick={() => onEditMember(child)}
-                                                                    className="p-0.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full transition-colors"
-                                                                    title="Edit Dependent Name"
+                                                                    disabled={!canEdit}
+                                                                    className="p-0.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                    title={!canEdit ? 'Trip is ended' : 'Edit Dependent Name'}
                                                                 >
                                                                     <Edit2 className="w-2.5 h-2.5" />
                                                                 </button>
@@ -343,8 +373,9 @@ const ExpensesTab = React.memo(({
                                                     {isOwner && (
                                                         <button
                                                             onClick={() => onRemoveMember(child.id, childName)}
-                                                            className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
-                                                            title="Remove Dependent"
+                                                            disabled={!canEdit}
+                                                            className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            title={!canEdit ? 'Trip is ended' : 'Remove Dependent'}
                                                         >
                                                             <Trash2 className="w-3 h-3" />
                                                         </button>

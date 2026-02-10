@@ -22,9 +22,11 @@ interface BalancesTabProps {
     onSettle: (from: string, to: string, amount: number) => void
     currentUser: string | null
     onUndoSettlement?: (id: string) => void
+    canEdit?: boolean
+    isEnded?: boolean
 }
 
-export default function BalancesTab({ balances, settlements, settledHistory = [], currency, onSettle, currentUser: _currentUser, onUndoSettlement }: BalancesTabProps) {
+export default function BalancesTab({ balances, settlements, settledHistory = [], currency, onSettle, currentUser: _currentUser, onUndoSettlement, canEdit = true }: BalancesTabProps) {
 
     return (
         <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
@@ -73,8 +75,9 @@ export default function BalancesTab({ balances, settlements, settledHistory = []
                                         <div className="col-span-1 flex justify-center">
                                             <button
                                                 onClick={() => onSettle(s.from, s.to, s.amount)}
-                                                className="px-4 py-1.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/60 transition text-xs font-semibold shadow-sm"
-                                                title="Settle Debt"
+                                                disabled={!canEdit}
+                                                className="px-4 py-1.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/60 transition text-xs font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title={!canEdit ? 'Trip is ended' : 'Settle Debt'}
                                             >
                                                 Settle
                                             </button>
@@ -113,8 +116,9 @@ export default function BalancesTab({ balances, settlements, settledHistory = []
                                             </span>
                                             <button
                                                 onClick={() => onUndoSettlement && onUndoSettlement(s.id)}
-                                                className="absolute inset-0 flex items-center justify-center bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 rounded-lg text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-200 px-4"
-                                                title="Undo Settlement"
+                                                disabled={!canEdit}
+                                                className="absolute inset-0 flex items-center justify-center bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 rounded-lg text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-200 px-4 disabled:opacity-30"
+                                                title={!canEdit ? 'Trip is ended' : 'Undo Settlement'}
                                             >
                                                 Undo
                                             </button>

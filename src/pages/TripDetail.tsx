@@ -421,6 +421,10 @@ export default function TripDetail() {
 
     const isOwner = useMemo(() => participants.find(p => p.user_id === currentUser && p.user_id !== null)?.role === 'owner', [participants, currentUser])
 
+    // Check if user can edit - disabled when trip is ended for ALL users (including owner)
+    const isEnded = trip?.status === 'ended'
+    const canEdit = !isEnded
+
     // 3. Get Settled History
     const settledHistory = useMemo(() => {
         return expenses
@@ -666,6 +670,8 @@ export default function TripDetail() {
                             onDeleteAllExpenses={handleDeleteAllExpenses}
                             getParticipantName={getParticipantName}
                             categories={trip.categories}
+                            canEdit={canEdit}
+                            isEnded={isEnded}
                         />
                     )}
 
@@ -678,6 +684,8 @@ export default function TripDetail() {
                             onSettle={handleSettle}
                             onUndoSettlement={handleDelete}
                             currentUser={currentUser}
+                            canEdit={canEdit}
+                            isEnded={isEnded}
                         />
                     )}
 
@@ -809,6 +817,7 @@ export default function TripDetail() {
                 trip={trip}
                 participants={participants}
                 currentUser={currentUser}
+                balances={balances}
             />
 
             {/* Edit Member Name Modal */}

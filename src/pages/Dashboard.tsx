@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Plus, Calendar, MapPin, LogOut, Sun, Moon, Loader2, Trash2, User, Edit2 } from 'lucide-react'
-import { format } from 'date-fns'
+import { Plus, Calendar, MapPin, LogOut, Sun, Moon, Loader2, Trash2, User, Edit2, Power } from 'lucide-react'
+import { format, formatDistanceToNow } from 'date-fns'
 import CreateTripModal from '../components/CreateTripModal'
 import { toast } from 'react-hot-toast'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
@@ -232,10 +232,16 @@ export default function Dashboard() {
                                                 ) : 'Date TBD'}
                                             </span>
                                         </div>
-                                        <div className="flex justify-between items-center mt-4">
+                                        <div className="flex justify-between items-center mt-4 gap-2">
                                             <span className="text-xs font-bold px-2 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded uppercase">
                                                 {trip.user_role || 'Viewer'}
                                             </span>
+                                            {trip.status === 'ended' && trip.ended_at && (
+                                                <span className="text-xs font-medium px-2 py-1 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 rounded flex items-center gap-1">
+                                                    <Power className="w-3 h-3" />
+                                                    Ended {formatDistanceToNow(new Date(trip.ended_at), { addSuffix: true })}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

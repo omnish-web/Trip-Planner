@@ -3,27 +3,36 @@ import { supabase } from '../lib/supabase'
 import { AlertTriangle, Loader2, X } from 'lucide-react'
 
 interface PasswordConfirmModalProps {
-    isOpen: boolean
+    isOpen?: boolean
     onClose: () => void
-    onConfirm: () => Promise<void>
+    onConfirm: (password?: string) => Promise<void>
     title: string
     message: string
     confirmText?: string
+    confirmButtonText?: string
     variant?: 'danger' | 'warning'
+    showEmailOption?: boolean
+    emailOptionLabel?: string
+    onEmailOptionChange?: (checked: boolean) => void
 }
 
 export default function PasswordConfirmModal({
-    isOpen,
+    isOpen = true,
     onClose,
     onConfirm,
     title,
     message,
-    confirmText = 'Confirm',
-    variant = 'danger'
+    confirmText,
+    confirmButtonText,
+    variant = 'danger',
+    showEmailOption = false,
+    emailOptionLabel = 'Send email notification',
+    onEmailOptionChange
 }: PasswordConfirmModalProps) {
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [emailChecked, setEmailChecked] = useState(false)
 
     if (!isOpen) return null
 
@@ -46,8 +55,8 @@ export default function PasswordConfirmModal({
                 throw new Error('Incorrect password')
             }
 
-            // If verification correct, execute the action
-            await onConfirm()
+            // If verification correct, execute the action with password
+            await onConfirm(password)
             onClose()
             setPassword('') // Reset password field
         } catch (err: any) {
@@ -93,6 +102,21 @@ export default function PasswordConfirmModal({
                         />
                     </div>
 
+                    {showEmailOption && (
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={emailChecked}
+                                onChange={(e) => {
+                                    setEmailChecked(e.target.checked)
+                                    onEmailOptionChange?.(e.target.checked)
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700 dark:text-gray-300">{emailOptionLabel}</span>
+                        </label>
+                    )}
+
                     {error && (
                         <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded">
                             {error}
@@ -113,7 +137,7 @@ export default function PasswordConfirmModal({
                             className={`flex-1 px-4 py-2 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2
                                 ${variant === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-500 hover:bg-orange-600'}`}
                         >
-                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmText}
+                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (confirmButtonText || confirmText || 'Confirm')}
                         </button>
                     </div>
                 </form>

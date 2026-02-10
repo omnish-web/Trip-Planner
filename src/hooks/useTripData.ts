@@ -14,6 +14,8 @@ export interface Trip {
     destination?: string
     categories?: string[]
     settled_history?: any[]
+    status?: 'active' | 'ended'
+    ended_at?: string | null
 }
 
 interface Expense {

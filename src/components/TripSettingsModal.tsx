@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, Loader2, Save, Trash2, Plus, AlertTriangle, Settings, List, Check, Edit2 } from 'lucide-react'
+import { X, Loader2, Save, Trash2, Plus, AlertTriangle, Settings, List, Check, Edit2, Power, RotateCcw } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import type { Trip } from '../hooks/useTripData'
 import { useUpdateTrip, useUpdateMemberRole } from '../hooks/useTripData'
 import ExpenseAdjustmentConfirmModal from './ExpenseAdjustmentConfirmModal'
+import EndTripConfirmModal from './EndTripConfirmModal'
+import PasswordConfirmModal from './PasswordConfirmModal'
 
 interface TripSettingsModalProps {
     trip: Trip
@@ -12,12 +14,17 @@ interface TripSettingsModalProps {
     isOpen: boolean
     onClose: () => void
     currentUser: string | null
+    balances?: { participantId: string, amount: number, name: string }[]
 }
 
-export default function TripSettingsModal({ trip, participants, isOpen, onClose, currentUser }: TripSettingsModalProps) {
+export default function TripSettingsModal({ trip, participants, isOpen, onClose, currentUser, balances = [] }: TripSettingsModalProps) {
     const [activeTab, setActiveTab] = useState<'general' | 'roles' | 'categories'>('general')
     const updateTripMutation = useUpdateTrip()
     const updateMemberRoleMutation = useUpdateMemberRole()
+
+    // Detect if current user is owner
+    const currentUserParticipant = participants.find(p => p.user_id === currentUser)
+    const isOwner = currentUserParticipant?.role === 'owner'
 
     if (!isOpen) return null
 
@@ -60,7 +67,7 @@ export default function TripSettingsModal({ trip, participants, isOpen, onClose,
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 custom-scroll">
                     {activeTab === 'general' && (
-                        <GeneralSettings trip={trip} updateTrip={updateTripMutation} />
+                        <GeneralSettings trip={trip} updateTrip={updateTripMutation} isOwner={isOwner} participants={participants} balances={balances} />
                     )}
                     {activeTab === 'roles' && (
                         <RolesSettings tripId={trip.id} participants={participants} currentUser={currentUser} updateRole={updateMemberRoleMutation} />
@@ -74,12 +81,21 @@ export default function TripSettingsModal({ trip, participants, isOpen, onClose,
     )
 }
 
-function GeneralSettings({ trip, updateTrip }: { trip: Trip, updateTrip: any }) {
+function GeneralSettings({ trip, updateTrip, isOwner, participants, balances = [] }: { trip: Trip, updateTrip: any, isOwner: boolean, participants: any[], balances?: any[] }) {
     const [title, setTitle] = useState(trip.title)
     const [currency, setCurrency] = useState(trip.currency)
     const [startDate, setStartDate] = useState(trip.start_date || '')
     const [endDate, setEndDate] = useState(trip.end_date || '')
     const [loading, setLoading] = useState(false)
+
+    // End Trip states
+    const [showEndTripModal, setShowEndTripModal] = useState(false)
+    const [showReopenPasswordModal, setShowReopenPasswordModal] = useState(false)
+    const [sendEmailOnReopen, setSendEmailOnReopen] = useState(false)
+
+    const tripStatus = trip.status || 'active'
+    const isEnded = tripStatus === 'ended'
+    const canEndTrip = isOwner && !isEnded && endDate && new Date(endDate) < new Date()
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -102,63 +118,211 @@ function GeneralSettings({ trip, updateTrip }: { trip: Trip, updateTrip: any }) 
         }
     }
 
+    const handleEndTrip = async (sendEmail: boolean, useOriginalDate?: boolean) => {
+        setLoading(true)
+        try {
+            const endedAt = useOriginalDate !== undefined && useOriginalDate && trip.ended_at
+                ? trip.ended_at
+                : new Date().toISOString()
+
+            const { error } = await supabase
+                .from('trips')
+                .update({
+                    status: 'ended',
+                    ended_at: endedAt
+                })
+                .eq('id', trip.id)
+
+            if (error) throw error
+
+            if (sendEmail) {
+                // Send email notifications to all members except owner
+                await sendTripStatusEmail(trip.id, participants, 'ended')
+            }
+
+            toast.success('Trip ended successfully')
+            setShowEndTripModal(false)
+            window.location.reload()
+        } catch (error: any) {
+            console.error('Error ending trip:', error)
+            toast.error('Failed to end trip: ' + (error.message || 'Unknown error'))
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleReopenTrip = async (password?: string) => {
+        setLoading(true)
+        try {
+            if (!password) throw new Error('Password is required')
+
+            // Verify password
+            const { data: { user }, error: authError } = await supabase.auth.getUser()
+            if (authError || !user) throw new Error('Authentication required')
+
+            const { error: signInError } = await supabase.auth.signInWithPassword({
+                email: user.email!,
+                password: password
+            })
+
+            if (signInError) throw new Error('Invalid password')
+
+            // Update trip status
+            const { error } = await supabase
+                .from('trips')
+                .update({ status: 'active' })
+                .eq('id', trip.id)
+
+            if (error) throw error
+
+            if (sendEmailOnReopen) {
+                await sendTripStatusEmail(trip.id, participants, 'reopened')
+            }
+
+            toast.success('Trip reopened successfully')
+            setShowReopenPasswordModal(false)
+            window.location.reload()
+        } catch (error: any) {
+            console.error('Error reopening trip:', error)
+            toast.error(error.message || 'Failed to reopen trip')
+        } finally {
+            setLoading(false)
+        }
+    }
+
     return (
-        <form onSubmit={handleSave} className="space-y-4">
-            <div>
-                <label className="compact-label">Trip Name</label>
-                <input
-                    type="text"
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    className="compact-input"
-                    required
+        <>
+            <form onSubmit={handleSave} className="space-y-4">
+                <div>
+                    <label className="compact-label">Trip Name</label>
+                    <input
+                        type="text"
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                        className="compact-input"
+                        required
+                    />
+                </div>
+                <div>
+                    <label className="compact-label">Currency</label>
+                    <select
+                        value={currency}
+                        onChange={e => setCurrency(e.target.value)}
+                        className="compact-input"
+                    >
+                        <option value="INR">INR (₹)</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="JPY">JPY (¥)</option>
+                    </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="compact-label">Start Date</label>
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={e => setStartDate(e.target.value)}
+                            className="compact-input"
+                        />
+                    </div>
+                    <div>
+                        <label className="compact-label">End Date</label>
+                        <input
+                            type="date"
+                            value={endDate}
+                            onChange={e => setEndDate(e.target.value)}
+                            className="compact-input"
+                        />
+                    </div>
+                </div>
+                <div className="pt-4">
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="btn-primary w-full flex justify-center items-center gap-2"
+                    >
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+
+            {/* End Trip / Reopen Trip Section */}
+            {isOwner && (
+                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                    {isEnded ? (
+                        <div className="space-y-3">
+                            <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg border border-orange-200 dark:border-orange-800">
+                                <div className="flex items-start gap-3">
+                                    <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 mt-0.5" />
+                                    <div>
+                                        <p className="text-sm font-medium text-orange-800 dark:text-orange-200">Trip Ended</p>
+                                        <p className="text-xs text-orange-700 dark:text-orange-300 mt-1">
+                                            This trip is read-only. Reopen to make changes.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowReopenPasswordModal(true)}
+                                disabled={loading}
+                                className="w-full btn-primary flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700"
+                            >
+                                <RotateCcw className="w-4 h-4" />
+                                Reopen Trip
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <button
+                                onClick={() => setShowEndTripModal(true)}
+                                disabled={!canEndTrip || loading}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white rounded-lg transition-colors font-medium disabled:cursor-not-allowed"
+                                title={!canEndTrip && endDate ? `Trip can be ended after ${endDate}` : ''}
+                            >
+                                <Power className="w-4 h-4" />
+                                End Trip
+                            </button>
+                            {!canEndTrip && endDate && new Date(endDate) >= new Date() && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                                    Trip can be ended after {new Date(endDate).toLocaleDateString()}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* End Trip Confirm Modal */}
+            {showEndTripModal && (
+                <EndTripConfirmModal
+                    tripName={trip.title}
+                    onClose={() => setShowEndTripModal(false)}
+                    onConfirm={handleEndTrip}
+                    previousEndedAt={trip.ended_at}
+                    unsettledBalances={balances}
                 />
-            </div>
-            <div>
-                <label className="compact-label">Currency</label>
-                <select
-                    value={currency}
-                    onChange={e => setCurrency(e.target.value)}
-                    className="compact-input"
-                >
-                    <option value="INR">INR (₹)</option>
-                    <option value="USD">USD ($)</option>
-                    <option value="EUR">EUR (€)</option>
-                    <option value="GBP">GBP (£)</option>
-                    <option value="JPY">JPY (¥)</option>
-                </select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-                <div>
-                    <label className="compact-label">Start Date</label>
-                    <input
-                        type="date"
-                        value={startDate}
-                        onChange={e => setStartDate(e.target.value)}
-                        className="compact-input"
-                    />
-                </div>
-                <div>
-                    <label className="compact-label">End Date</label>
-                    <input
-                        type="date"
-                        value={endDate}
-                        onChange={e => setEndDate(e.target.value)}
-                        className="compact-input"
-                    />
-                </div>
-            </div>
-            <div className="pt-4">
-                <button
-                    type="submit"
-                    disabled={loading}
-                    className="btn-primary w-full flex justify-center items-center gap-2"
-                >
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    Save Changes
-                </button>
-            </div>
-        </form>
+            )}
+
+            {/* Reopen Trip Password Modal */}
+            {showReopenPasswordModal && (
+                <PasswordConfirmModal
+                    onClose={() => {
+                        setShowReopenPasswordModal(false)
+                        setSendEmailOnReopen(false)
+                    }}
+                    onConfirm={handleReopenTrip}
+                    title="Reopen Trip"
+                    message="⚠️ You are reopening a trip that has already ended. This will allow edits again."
+                    confirmButtonText="Reopen Trip"
+                    showEmailOption={true}
+                    emailOptionLabel="Send email notification to members"
+                    onEmailOptionChange={setSendEmailOnReopen}
+                />
+            )}
+        </>
     )
 }
 
@@ -378,6 +542,46 @@ async function recalculateExpenseSplits(
         console.error('Error recalculating expenses:', error)
         toast.error('Failed to update expenses: ' + ((error as any).message || 'Unknown error'))
         throw error // Re-throw to let caller know
+    }
+}
+
+// Helper function to send email notifications when trip status changes
+async function sendTripStatusEmail(
+    tripId: string,
+    participants: any[],
+    action: 'ended' | 'reopened'
+) {
+    try {
+        // Get trip details
+        const { data: trip } = await supabase
+            .from('trips')
+            .select('title')
+            .eq('id', tripId)
+            .single()
+
+        if (!trip) return
+
+        // Get owner info
+        const owner = participants.find(p => p.role === 'owner')
+        const ownerName = owner?.profiles?.full_name || owner?.name || 'Trip Owner'
+
+        // Get all member emails (excluding owner)
+        const memberEmails = participants
+            .filter(p => p.role !== 'owner' && p.profiles?.email)
+            .map(p => p.profiles.email)
+
+        if (memberEmails.length === 0) return
+
+        // Note: This is a placeholder for actual email sending
+        // You would typically use Supabase Edge Functions or an email service here
+        console.log(`Would send email to:`, memberEmails)
+        console.log(`Subject: Trip "${trip.title}" has been ${action}`)
+        console.log(`Message: ${ownerName} has ${action} the trip "${trip.title}"`)
+
+        toast.success(`Email notifications would be sent to ${memberEmails.length} members`)
+    } catch (error) {
+        console.error('Error sending email notifications:', error)
+        // Don't throw - email failure shouldn't block the main action
     }
 }
 
