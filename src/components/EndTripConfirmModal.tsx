@@ -31,7 +31,7 @@ export default function EndTripConfirmModal({ tripName, onClose, onConfirm, prev
     const hasUnsettledDebts = unsettledBalances.some(b => Math.abs(b.amount) > 0.01)
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="glass-panel w-full max-w-2xl bg-white dark:bg-gray-900 relative flex flex-col max-h-[90vh] overflow-hidden animate-fade-in">
                 {/* Header */}
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center shrink-0">
@@ -52,7 +52,7 @@ export default function EndTripConfirmModal({ tripName, onClose, onConfirm, prev
                 {/* Content */}
                 <div className="p-6 overflow-y-auto custom-scrollbar space-y-4">
                     <p className="text-gray-700 dark:text-gray-300">
-                        Are you sure you want to end <strong>{tripName}</strong>?
+                        Are you sure you want to end your trip to <strong>{tripName}</strong>?
                     </p>
 
                     {/* Unsettled Balances Warning */}

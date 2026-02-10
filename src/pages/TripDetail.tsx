@@ -14,6 +14,7 @@ import ExpensesTab from '../components/ExpensesTab'
 import BalancesTab from '../components/BalancesTab'
 import { useQueryClient } from '@tanstack/react-query'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
+import EndTripConfirmModal from '../components/EndTripConfirmModal'
 import { useTrip, useTripParticipants, useExpenses, useCurrentUser } from '../hooks/useTripData'
 
 
@@ -24,6 +25,46 @@ import { useTrip, useTripParticipants, useExpenses, useCurrentUser } from '../ho
 // Lazy Load Heavy Components
 const TripSnapshotTab = lazy(() => import('../components/TripSnapshotTab'))
 const AddExpenseModal = lazy(() => import('../components/AddExpenseModal'))
+
+// Helper function to send email notifications when trip status changes
+async function sendTripStatusEmail(
+    tripId: string,
+    participants: any[],
+    action: 'ended' | 'reopened'
+) {
+    try {
+        // Get trip details
+        const { data: trip } = await supabase
+            .from('trips')
+            .select('title')
+            .eq('id', tripId)
+            .single()
+
+        if (!trip) return
+
+        // Get owner info
+        const owner = participants.find(p => p.role === 'owner')
+        const ownerName = owner?.profiles?.full_name || owner?.name || 'Trip Owner'
+
+        // Get all member emails (excluding owner)
+        const memberEmails = participants
+            .filter(p => p.role !== 'owner' && p.profiles?.email)
+            .map(p => p.profiles.email)
+
+        if (memberEmails.length === 0) return
+
+        // Note: This is a placeholder for actual email sending
+        // You would typically use Supabase Edge Functions or an email service here
+        console.log(`Would send email to:`, memberEmails)
+        console.log(`Subject: Trip "${trip.title}" has been ${action}`)
+        console.log(`Message: ${ownerName} has ${action} the trip "${trip.title}"`)
+
+        toast.success(`Email notifications would be sent to ${memberEmails.length} members`)
+    } catch (error) {
+        console.error('Error sending email notifications:', error)
+        // Don't throw - email failure shouldn't block the main action
+    }
+}
 
 
 export default function TripDetail() {
@@ -43,6 +84,7 @@ export default function TripDetail() {
     const [showAddMember, setShowAddMember] = useState(false)
     const [expenseToEdit, setExpenseToEdit] = useState<any>(null)
     const [showDeleteTripModal, setShowDeleteTripModal] = useState(false)
+    const [showEndTripModal, setShowEndTripModal] = useState(false)
     const [isEditingTitle, setIsEditingTitle] = useState(false)
     const [editedTitle, setEditedTitle] = useState('')
     const [showImagePicker, setShowImagePicker] = useState(false)
@@ -105,6 +147,37 @@ export default function TripDetail() {
             localStorage.setItem('theme', 'light')
         }
     }, [isDark])
+
+    const handleEndTrip = async (sendEmail: boolean, useOriginalDate?: boolean) => {
+        if (!trip) return
+        try {
+            const endedAt = useOriginalDate !== undefined && useOriginalDate && trip.ended_at
+                ? trip.ended_at
+                : new Date().toISOString()
+
+            const { error } = await supabase
+                .from('trips')
+                .update({
+                    status: 'ended',
+                    ended_at: endedAt
+                })
+                .eq('id', trip.id)
+
+            if (error) throw error
+
+            if (sendEmail) {
+                // Send email notifications to all members except owner
+                await sendTripStatusEmail(trip.id, participants, 'ended')
+            }
+
+            toast.success('Trip ended successfully')
+            setShowEndTripModal(false)
+            queryClient.invalidateQueries({ queryKey: ['trip', id] })
+        } catch (error: any) {
+            console.error('Error ending trip:', error)
+            toast.error('Failed to end trip: ' + (error.message || 'Unknown error'))
+        }
+    }
 
 
 
@@ -818,7 +891,21 @@ export default function TripDetail() {
                 participants={participants}
                 currentUser={currentUser}
                 balances={balances}
+                onRequestEndTrip={() => {
+                    setShowEndTripModal(true)
+                }}
             />
+
+            {/* End Trip Confirm Modal - Hoisted to TripDetail */}
+            {showEndTripModal && trip && (
+                <EndTripConfirmModal
+                    tripName={trip.title}
+                    onClose={() => setShowEndTripModal(false)}
+                    onConfirm={handleEndTrip}
+                    previousEndedAt={trip.ended_at}
+                    unsettledBalances={balances}
+                />
+            )}
 
             {/* Edit Member Name Modal */}
             {showEditMemberModal && (

@@ -15,9 +15,10 @@ interface TripSettingsModalProps {
     onClose: () => void
     currentUser: string | null
     balances?: { participantId: string, amount: number, name: string }[]
+    onRequestEndTrip?: () => void
 }
 
-export default function TripSettingsModal({ trip, participants, isOpen, onClose, currentUser, balances = [] }: TripSettingsModalProps) {
+export default function TripSettingsModal({ trip, participants, isOpen, onClose, currentUser, balances = [], onRequestEndTrip }: TripSettingsModalProps) {
     const [activeTab, setActiveTab] = useState<'general' | 'roles' | 'categories'>('general')
     const updateTripMutation = useUpdateTrip()
     const updateMemberRoleMutation = useUpdateMemberRole()
@@ -67,7 +68,14 @@ export default function TripSettingsModal({ trip, participants, isOpen, onClose,
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 custom-scroll">
                     {activeTab === 'general' && (
-                        <GeneralSettings trip={trip} updateTrip={updateTripMutation} isOwner={isOwner} participants={participants} balances={balances} />
+                        <GeneralSettings
+                            trip={trip}
+                            updateTrip={updateTripMutation}
+                            isOwner={isOwner}
+                            participants={participants}
+                            balances={balances}
+                            onRequestEndTrip={onRequestEndTrip}
+                        />
                     )}
                     {activeTab === 'roles' && (
                         <RolesSettings tripId={trip.id} participants={participants} currentUser={currentUser} updateRole={updateMemberRoleMutation} />
@@ -81,7 +89,7 @@ export default function TripSettingsModal({ trip, participants, isOpen, onClose,
     )
 }
 
-function GeneralSettings({ trip, updateTrip, isOwner, participants, balances = [] }: { trip: Trip, updateTrip: any, isOwner: boolean, participants: any[], balances?: any[] }) {
+function GeneralSettings({ trip, updateTrip, isOwner, participants, balances = [], onRequestEndTrip }: { trip: Trip, updateTrip: any, isOwner: boolean, participants: any[], balances?: any[], onRequestEndTrip?: () => void }) {
     const [title, setTitle] = useState(trip.title)
     const [currency, setCurrency] = useState(trip.currency)
     const [startDate, setStartDate] = useState(trip.start_date || '')
@@ -95,7 +103,11 @@ function GeneralSettings({ trip, updateTrip, isOwner, participants, balances = [
 
     const tripStatus = trip.status || 'active'
     const isEnded = tripStatus === 'ended'
-    const canEndTrip = isOwner && !isEnded && endDate && new Date(endDate) < new Date()
+    const canEndTrip = isOwner && !isEnded && endDate && (() => {
+        const d = new Date()
+        const todayLocal = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        return endDate < todayLocal
+    })()
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -277,7 +289,7 @@ function GeneralSettings({ trip, updateTrip, isOwner, participants, balances = [
                     ) : (
                         <div className="space-y-3">
                             <button
-                                onClick={() => setShowEndTripModal(true)}
+                                onClick={() => onRequestEndTrip ? onRequestEndTrip() : setShowEndTripModal(true)}
                                 disabled={!canEndTrip || loading}
                                 className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white rounded-lg transition-colors font-medium disabled:cursor-not-allowed"
                                 title={!canEndTrip && endDate ? `Trip can be ended after ${endDate}` : ''}

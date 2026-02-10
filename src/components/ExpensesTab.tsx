@@ -99,7 +99,11 @@ const ExpensesTab = React.memo(({
                         <div>
                             <p className="font-bold text-orange-800 dark:text-orange-300">This trip has ended</p>
                             <p className="text-sm text-orange-700 dark:text-orange-400 mt-0.5">
-                                All editing is disabled for everyone. {isOwner && 'As the owner, you can reopen the trip from Settings if needed.'}
+                                All editing is disabled for everyone. {
+                                    isOwner
+                                        ? 'As the owner, you can reopen the trip from Settings if needed.'
+                                        : 'Please contact owner to enable editing.'
+                                }
                             </p>
                         </div>
                     </div>
