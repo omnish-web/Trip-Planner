@@ -1,0 +1,2 @@
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS comments text;
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS notes text;
