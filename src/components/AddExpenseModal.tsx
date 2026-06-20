@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, Loader2, Users, Paperclip, Upload } from 'lucide-react'
+import { X, Loader2, Users, Paperclip, Upload, FolderOpen } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
+import { useAllTripAttachments } from '../hooks/useTripData'
 
 
 interface Participant {
@@ -61,6 +62,32 @@ export default function AddExpenseModal({ tripId, participants, currency, onClos
     const [file, setFile] = useState<File | null>(null)
     const [existingAttachment, setExistingAttachment] = useState<{ url: string; name: string; size?: number; type?: string } | null>(null)
     const [removeExisting, setRemoveExisting] = useState(false)
+
+    // Library attachments states
+    const [selectedLibraryAttachment, setSelectedLibraryAttachment] = useState<{ url: string; name: string; size?: number; type?: string } | null>(null)
+    const [showLibraryPicker, setShowLibraryPicker] = useState(false)
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data }) => {
+            if (data.user) {
+                setCurrentUserId(data.user.id)
+            }
+        })
+    }, [])
+
+    const { data: allAttachments = [] } = useAllTripAttachments(currentUserId)
+    const tripAttachments = useMemo(() => {
+        const seen = new Set<string>()
+        return allAttachments
+            .filter(att => att.trip_id === tripId)
+            .filter(att => {
+                if (!att.file_url) return false
+                if (seen.has(att.file_url)) return false
+                seen.add(att.file_url)
+                return true
+            })
+    }, [allAttachments, tripId])
 
 
     useEffect(() => {
@@ -241,10 +268,10 @@ export default function AddExpenseModal({ tripId, participants, currency, onClos
             let expenseId = expenseToEdit?.id
 
             // Handle uploading new file if selected
-            let uploadedUrl = null
-            let uploadedName = null
-            let uploadedType = null
-            let uploadedSize = null
+            let uploadedUrl = selectedLibraryAttachment?.url || null
+            let uploadedName = selectedLibraryAttachment?.name || null
+            let uploadedType = selectedLibraryAttachment?.type || null
+            let uploadedSize = selectedLibraryAttachment?.size || null
 
             if (file) {
                 const { data: { user } } = await supabase.auth.getUser()
@@ -478,7 +505,19 @@ export default function AddExpenseModal({ tripId, participants, currency, onClos
 
                             {/* File Attachment Section */}
                             <div>
-                                <label className="compact-label">Attachment <span className="text-gray-400 font-normal">(optional)</span></label>
+                                <label className="compact-label flex justify-between items-center">
+                                    <span>Attachment <span className="text-gray-400 font-normal">(optional)</span></span>
+                                    {!file && !existingAttachment && !selectedLibraryAttachment && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowLibraryPicker(true)}
+                                            className="text-[10px] font-bold text-fuchsia-400 hover:text-fuchsia-300 transition flex items-center gap-1"
+                                        >
+                                            <FolderOpen className="w-3 h-3" />
+                                            Choose from Library
+                                        </button>
+                                    )}
+                                </label>
                                 
                                 {existingAttachment && !removeExisting ? (
                                     <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800/30 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -504,6 +543,27 @@ export default function AddExpenseModal({ tripId, participants, currency, onClos
                                             className="text-[10px] font-bold text-red-500 hover:text-red-600 transition"
                                         >
                                             Remove
+                                        </button>
+                                    </div>
+                                ) : selectedLibraryAttachment ? (
+                                    <div className="flex items-center justify-between p-2 bg-fuchsia-500/10 rounded-xl border border-fuchsia-500/20">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <FolderOpen className="w-3.5 h-3.5 text-fuchsia-400 shrink-0" />
+                                            <span className="text-xs font-semibold text-fuchsia-300 truncate">
+                                                [Library] {selectedLibraryAttachment.name}
+                                            </span>
+                                            {selectedLibraryAttachment.size && (
+                                                <span className="text-[10px] text-fuchsia-400/50">
+                                                    ({(selectedLibraryAttachment.size / 1024).toFixed(1)} KB)
+                                                </span>
+                                            )}
+                                        </div>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setSelectedLibraryAttachment(null)}
+                                            className="text-[10px] font-bold text-red-500 hover:text-red-600 transition"
+                                        >
+                                            Clear
                                         </button>
                                     </div>
                                 ) : file ? (
@@ -726,6 +786,68 @@ export default function AddExpenseModal({ tripId, participants, currency, onClos
                     </div>
                 </form>
             </div >
+
+            {/* Library File Picker Modal */}
+            {showLibraryPicker && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+                    <div className="bg-[#0a0f2c] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden flex flex-col shadow-2xl animate-scale-up">
+                        <div className="p-4 border-b border-white/10 flex justify-between items-center shrink-0">
+                            <h3 className="font-bold text-white text-base flex items-center gap-2">
+                                <FolderOpen className="w-4 h-4 text-fuchsia-400" />
+                                Trip File Library
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setShowLibraryPicker(false)}
+                                className="text-slate-400 hover:text-white p-1 hover:bg-white/5 rounded-lg transition"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-4 max-h-[350px] overflow-y-auto custom-scroll space-y-2">
+                            {tripAttachments.length === 0 ? (
+                                <div className="text-center py-8 text-slate-500 text-sm italic">
+                                    No attachments uploaded to this trip yet.
+                                </div>
+                            ) : (
+                                tripAttachments.map((att) => (
+                                    <div
+                                        key={att.id}
+                                        onClick={() => {
+                                            setSelectedLibraryAttachment({
+                                                url: att.file_url,
+                                                name: att.file_name,
+                                                size: att.file_size,
+                                                type: att.file_type
+                                            })
+                                            setShowLibraryPicker(false)
+                                        }}
+                                        className="flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-fuchsia-500/10 border border-white/5 hover:border-fuchsia-500/20 cursor-pointer transition"
+                                    >
+                                        <div className="min-w-0 flex-1 flex items-center gap-3">
+                                            <Paperclip className="w-4 h-4 text-fuchsia-400 shrink-0" />
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-xs font-semibold text-slate-200 truncate">
+                                                    {att.file_name}
+                                                </p>
+                                                <p className="text-[10px] text-slate-500 mt-0.5">
+                                                    {(att.file_size / 1024).toFixed(1)} KB · {att.uploader_name || 'Guest'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="text-[10px] font-bold text-fuchsia-400 hover:text-fuchsia-300 px-2.5 py-1 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 rounded-lg transition shrink-0"
+                                        >
+                                            Select
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     )
 }

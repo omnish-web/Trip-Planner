@@ -72,6 +72,7 @@ export interface NewNotePayload {
     tripId: string
     content: string
     files: File[]
+    libraryFiles?: { url: string; name: string; type: string; size: number }[]
 }
 
 // 1. Fetch All Trips (for Dashboard)
@@ -324,7 +325,7 @@ export function useAddTripNote() {
     const queryClient = useQueryClient()
 
     return useMutation({
-        mutationFn: async ({ tripId, content, files }: NewNotePayload) => {
+        mutationFn: async ({ tripId, content, files, libraryFiles }: NewNotePayload) => {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('Not authenticated')
 
@@ -338,9 +339,9 @@ export function useAddTripNote() {
             if (noteError) throw noteError
 
             // 2. Upload each file to storage and insert attachment rows
-            if (files.length > 0) {
-                const attachmentRows = []
+            const attachmentRows = []
 
+            if (files.length > 0) {
                 for (const file of files) {
                     const ext = file.name.split('.').pop()
                     const storagePath = `${user.id}/${tripId}/${crypto.randomUUID()}.${ext}`
@@ -363,7 +364,21 @@ export function useAddTripNote() {
                         file_size: file.size,
                     })
                 }
+            }
 
+            if (libraryFiles && libraryFiles.length > 0) {
+                for (const libFile of libraryFiles) {
+                    attachmentRows.push({
+                        note_id: note.id,
+                        file_name: libFile.name,
+                        file_url: libFile.url,
+                        file_type: libFile.type,
+                        file_size: libFile.size,
+                    })
+                }
+            }
+
+            if (attachmentRows.length > 0) {
                 const { error: attachError } = await supabase
                     .from('trip_note_attachments')
                     .insert(attachmentRows)

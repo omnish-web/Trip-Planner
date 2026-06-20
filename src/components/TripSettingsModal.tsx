@@ -4,6 +4,8 @@ import { X, Loader2, Save, Trash2, Plus, AlertTriangle, Settings, Check, Edit2, 
 import { toast } from 'react-hot-toast'
 import type { Trip } from '../hooks/useTripData'
 import { useUpdateTrip, useUpdateMemberRole } from '../hooks/useTripData'
+import { useQueryClient } from '@tanstack/react-query'
+import ConfirmModal from './ConfirmModal'
 import ExpenseAdjustmentConfirmModal from './ExpenseAdjustmentConfirmModal'
 import EndTripConfirmModal from './EndTripConfirmModal'
 import PasswordConfirmModal from './PasswordConfirmModal'
@@ -644,6 +646,7 @@ async function sendTripStatusEmail(
 }
 
 function RolesSettings({ tripId, participants, currentUser, updateRole }: { tripId: string, participants: any[], currentUser: string | null, updateRole: any }) {
+    const queryClient = useQueryClient()
     const [editingMember, setEditingMember] = useState<any>(null)
     const [editName, setEditName] = useState('')
     const [editRole, setEditRole] = useState('')
@@ -651,6 +654,36 @@ function RolesSettings({ tripId, participants, currentUser, updateRole }: { trip
     const [saving, setSaving] = useState(false)
     const [showExpenseConfirm, setShowExpenseConfirm] = useState(false)
     const [pendingUpdates, setPendingUpdates] = useState<any>(null)
+
+    const [confirmState, setConfirmState] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        confirmText: string;
+        onConfirm: () => void;
+        variant: 'danger' | 'warning' | 'info';
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        confirmText: '',
+        onConfirm: () => {},
+        variant: 'warning'
+    })
+
+    const triggerConfirm = (title: string, message: string, confirmText: string, variant: 'danger' | 'warning' | 'info', onConfirm: () => void) => {
+        setConfirmState({
+            isOpen: true,
+            title,
+            message,
+            confirmText,
+            variant,
+            onConfirm: () => {
+                onConfirm()
+                setConfirmState(prev => ({ ...prev, isOpen: false }))
+            }
+        })
+    }
 
     const getParticipantName = (p: any) => {
         return p.profiles?.full_name || p.name || p.profiles?.email || 'Unknown User'
@@ -681,6 +714,40 @@ function RolesSettings({ tripId, participants, currentUser, updateRole }: { trip
         setEditName('')
         setEditRole('')
         setEditParentId(null)
+    }
+
+    const handleSwapRoles = async () => {
+        if (!editingMember || !editingMember.parent_id) return
+
+        const parentParticipant = participants.find(p => p.id === editingMember.parent_id)
+        const parentName = parentParticipant ? getParticipantName(parentParticipant) : 'Parent'
+        const childName = editName.trim() || getParticipantName(editingMember)
+
+        triggerConfirm(
+            'Swap Roles?',
+            `Are you sure you want to swap roles? ${childName} will become the parent/independent member, and ${parentName} (and any other dependents) will become dependent on ${childName}. This will also transfer paid expenses and update equal splits automatically.`,
+            'Swap Roles',
+            'warning',
+            async () => {
+                const toastId = toast.loading('Swapping roles and updating expenses...')
+                try {
+                    const { error } = await supabase.rpc('swap_participant_roles', {
+                        new_parent_id: editingMember.id,
+                        old_parent_id: editingMember.parent_id
+                    })
+
+                    if (error) throw error
+
+                    toast.success('Roles swapped and expenses updated successfully!', { id: toastId })
+                    closeEditModal()
+                    queryClient.invalidateQueries({ queryKey: ['participants', tripId] })
+                    queryClient.invalidateQueries({ queryKey: ['expenses', tripId] })
+                } catch (err: any) {
+                    console.error('Error swapping roles:', err)
+                    toast.error('Failed to swap roles: ' + (err.message || 'Unknown error'), { id: toastId })
+                }
+            }
+        )
     }
 
     const handleSaveEdit = async () => {
@@ -758,19 +825,26 @@ function RolesSettings({ tripId, participants, currentUser, updateRole }: { trip
     }
 
     const handleDeleteMember = async (id: string, name: string) => {
-        if (!confirm(`Are you sure you want to remove ${name}?`)) return
-        try {
-            const { error } = await supabase
-                .from('trip_participants')
-                .delete()
-                .eq('id', id)
-            if (error) throw error
-            toast.success(`${name} removed`)
-            window.location.reload()
-        } catch (error: any) {
-            console.error('Error removing member:', error)
-            toast.error('Failed to remove member')
-        }
+        triggerConfirm(
+            'Remove Member?',
+            `Are you sure you want to remove ${name}?`,
+            'Remove',
+            'danger',
+            async () => {
+                try {
+                    const { error } = await supabase
+                        .from('trip_participants')
+                        .delete()
+                        .eq('id', id)
+                    if (error) throw error
+                    toast.success(`${name} removed`)
+                    window.location.reload()
+                } catch (error: any) {
+                    console.error('Error removing member:', error)
+                    toast.error('Failed to remove member')
+                }
+            }
+        )
     }
 
     return (
@@ -940,6 +1014,15 @@ function RolesSettings({ tripId, participants, currentUser, updateRole }: { trip
                         </div>
 
                         <div className="flex gap-3 mt-6">
+                            {editingMember.parent_id && (
+                                <button
+                                    onClick={handleSwapRoles}
+                                    className="flex-1 px-4 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/40 text-purple-700 dark:text-purple-300 border border-purple-500/30 hover:border-purple-500/50 transition-all font-bold text-xs flex items-center justify-center gap-1.5"
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-ping"></span>
+                                    Swap Roles
+                                </button>
+                            )}
                             <button
                                 onClick={closeEditModal}
                                 className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition font-medium"
@@ -958,6 +1041,16 @@ function RolesSettings({ tripId, participants, currentUser, updateRole }: { trip
                     </div>
                 </div>
             )}
+
+            <ConfirmModal
+                isOpen={confirmState.isOpen}
+                onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={confirmState.onConfirm}
+                title={confirmState.title}
+                message={confirmState.message}
+                confirmText={confirmState.confirmText}
+                variant={confirmState.variant}
+            />
 
             {/* Expense Adjustment Confirmation Modal */}
             <ExpenseAdjustmentConfirmModal

@@ -108,7 +108,7 @@ export default function StorageMeter({ userId, compact = false }: StorageMeterPr
             </div>
 
             {/* Hover Breakdown Tooltip */}
-            <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-300 ease-out z-50 w-64 bg-slate-950/95 border border-white/10 backdrop-blur-md rounded-xl p-4 shadow-2xl transform scale-95 group-hover:scale-100 origin-bottom">
+            <div className={`absolute ${compact ? 'top-full mt-2.5 origin-top' : 'bottom-full mb-3 origin-bottom'} left-1/2 -translate-x-1/2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-300 ease-out z-50 w-64 bg-slate-950/95 border border-white/10 backdrop-blur-md rounded-xl p-4 shadow-2xl transform scale-95 group-hover:scale-100`}>
                 <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/5">
                     <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                         <HardDrive className="w-3.5 h-3.5 text-fuchsia-400" />

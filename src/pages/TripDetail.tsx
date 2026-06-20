@@ -121,6 +121,7 @@ export default function TripDetail() {
     const [memberToEdit, setMemberToEdit] = useState<any>(null)
     const [showEditMemberModal, setShowEditMemberModal] = useState(false)
     const [editedMemberName, setEditedMemberName] = useState('')
+    const [showSwapRolesModal, setShowSwapRolesModal] = useState(false)
 
 
     // Expense Management
@@ -479,6 +480,36 @@ export default function TripDetail() {
         } catch (error: any) {
             console.error('Error updating member:', error)
             toast.error('Failed to update member name')
+        }
+    }
+
+    const handleSwapRoles = () => {
+        if (!memberToEdit || !memberToEdit.parent_id) return
+        setShowSwapRolesModal(true)
+    }
+
+    const confirmSwapRoles = async () => {
+        if (!memberToEdit || !memberToEdit.parent_id) return
+
+        const toastId = toast.loading('Swapping roles and updating expenses...')
+        try {
+            const { error } = await supabase.rpc('swap_participant_roles', {
+                new_parent_id: memberToEdit.id,
+                old_parent_id: memberToEdit.parent_id
+            })
+
+            if (error) throw error
+
+            toast.success('Roles swapped and expenses updated successfully!', { id: toastId })
+            setShowEditMemberModal(false)
+            setShowSwapRolesModal(false)
+            setMemberToEdit(null)
+            setEditedMemberName('')
+            queryClient.invalidateQueries({ queryKey: ['participants', id] })
+            queryClient.invalidateQueries({ queryKey: ['expenses', id] })
+        } catch (err: any) {
+            console.error('Error swapping roles:', err)
+            toast.error('Failed to swap roles: ' + (err.message || 'Unknown error'), { id: toastId })
         }
     }
 
@@ -935,6 +966,16 @@ export default function TripDetail() {
                 variant="danger"
             />
 
+            <ConfirmModal
+                isOpen={showSwapRolesModal}
+                onClose={() => setShowSwapRolesModal(false)}
+                onConfirm={confirmSwapRoles}
+                title="Swap Roles?"
+                message={`Are you sure you want to swap roles? ${editedMemberName.trim() || (memberToEdit ? getParticipantName(memberToEdit.id) : 'this member')} will become the parent/independent member, and ${memberToEdit ? getParticipantName(memberToEdit.parent_id) : 'Parent'} (and any other dependents) will become dependent on them. This will also transfer paid expenses and update equal splits automatically.`}
+                confirmText="Swap Roles"
+                variant="warning"
+            />
+
             <PasswordConfirmModal
                 isOpen={showPasswordModal}
                 onClose={() => setShowPasswordModal(false)}
@@ -1006,6 +1047,15 @@ export default function TripDetail() {
                                 if (e.key === 'Escape') setShowEditMemberModal(false)
                             }}
                         />
+                        {memberToEdit?.parent_id && (
+                            <button
+                                onClick={handleSwapRoles}
+                                className="w-full mt-4 px-5 py-3.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 hover:text-white border border-purple-500/30 hover:border-purple-500/50 transition-all font-bold text-sm flex items-center justify-center gap-2"
+                            >
+                                <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping"></span>
+                                Swap Roles with Parent
+                            </button>
+                        )}
                         <div className="flex gap-3 mt-6">
                             <button
                                 onClick={() => {

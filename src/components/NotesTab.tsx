@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import {
     Save, Loader2, StickyNote, AlertCircle, Pin,
@@ -9,7 +9,7 @@ import {
 import { toast } from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow, format, parseISO } from 'date-fns'
-import { useTripNotes, useAddTripNote, useDeleteTripNote, useUpdateTripNote } from '../hooks/useTripData'
+import { useTripNotes, useAddTripNote, useDeleteTripNote, useUpdateTripNote, useAllTripAttachments } from '../hooks/useTripData'
 import type { TripNote, TripNoteAttachment } from '../hooks/useTripData'
 import FileManagerModal from './FileManagerModal'
 
@@ -270,11 +270,27 @@ export default function NotesTab({
     // ── File Manager ──
     const [showFileManager, setShowFileManager] = useState(false)
 
+    // ── Library Picker ──
+    const [pendingLibraryFiles, setPendingLibraryFiles] = useState<{ url: string; name: string; type: string; size: number }[]>([])
+    const [showLibraryPicker, setShowLibraryPicker] = useState(false)
+
     // ── Data hooks ──
     const { data: notes = [], isLoading: loadingNotes } = useTripNotes(tripId)
     const addNote = useAddTripNote()
     const deleteNote = useDeleteTripNote()
     const updateNote = useUpdateTripNote()
+    const { data: allAttachments = [] } = useAllTripAttachments(currentUserId)
+    const tripAttachments = useMemo(() => {
+        const seen = new Set<string>()
+        return allAttachments
+            .filter(att => att.trip_id === tripId)
+            .filter(att => {
+                if (!att.file_url) return false
+                if (seen.has(att.file_url)) return false
+                seen.add(att.file_url)
+                return true
+            })
+    }, [allAttachments, tripId])
 
     // Keep scratchpad in sync with server data
     useEffect(() => {
@@ -330,12 +346,18 @@ export default function NotesTab({
     // ── Post note ──
     const handlePostNote = async () => {
         const content = composerText.trim()
-        if (!content && pendingFiles.length === 0) return
+        if (!content && pendingFiles.length === 0 && pendingLibraryFiles.length === 0) return
 
         try {
-            await addNote.mutateAsync({ tripId, content: content || '(attachment)', files: pendingFiles })
+            await addNote.mutateAsync({
+                tripId,
+                content: content || '(attachment)',
+                files: pendingFiles,
+                libraryFiles: pendingLibraryFiles
+            })
             setComposerText('')
             setPendingFiles([])
+            setPendingLibraryFiles([])
             toast.success('Note posted')
         } catch (err: any) {
             toast.error(err?.message || 'Failed to post note')
@@ -541,6 +563,29 @@ export default function NotesTab({
                             </div>
                         )}
 
+                        {/* Pending library file chips */}
+                        {pendingLibraryFiles.length > 0 && (
+                            <div className="flex flex-wrap gap-2 px-5 pb-2">
+                                {pendingLibraryFiles.map((f, i) => (
+                                    <div
+                                        key={i}
+                                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg
+                                                   bg-fuchsia-500/10 border border-fuchsia-500/30
+                                                   text-fuchsia-200 text-xs font-medium"
+                                    >
+                                        <FolderOpen className="w-3 h-3 text-fuchsia-400" />
+                                        <span className="max-w-[140px] truncate">[Library] {f.name}</span>
+                                        <button
+                                            onClick={() => setPendingLibraryFiles(prev => prev.filter((_, idx) => idx !== i))}
+                                            className="ml-1 text-fuchsia-400/60 hover:text-rose-400 transition-colors"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         {/* Toolbar */}
                         <div className="flex items-center justify-between px-4 py-3 border-t border-white/[0.05]">
                             <div className="flex items-center gap-1">
@@ -569,6 +614,24 @@ export default function NotesTab({
                                         </span>
                                     )}
                                 </label>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setShowLibraryPicker(true)}
+                                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl
+                                               text-slate-400 hover:text-fuchsia-300 hover:bg-fuchsia-500/10
+                                               transition-all text-xs font-medium border border-transparent"
+                                    title="Attach from trip library"
+                                >
+                                    <FolderOpen className="w-4 h-4" />
+                                    <span>Library</span>
+                                    {pendingLibraryFiles.length > 0 && (
+                                        <span className="bg-fuchsia-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold">
+                                            {pendingLibraryFiles.length}
+                                        </span>
+                                    )}
+                                </button>
+
                                 <span className="text-slate-700 text-xs pl-1">
                                     PDF, images, docs · max {MAX_FILE_SIZE_MB} MB
                                 </span>
@@ -644,6 +707,91 @@ export default function NotesTab({
                 userId={currentUserId}
                 singleTripId={tripId}
             />
+        )}
+
+        {/* Library Picker Modal */}
+        {showLibraryPicker && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+                <div className="bg-[#0a0f2c] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden flex flex-col shadow-2xl animate-scale-up">
+                    <div className="p-4 border-b border-white/10 flex justify-between items-center shrink-0">
+                        <h3 className="font-bold text-white text-base flex items-center gap-2">
+                            <FolderOpen className="w-4 h-4 text-fuchsia-400" />
+                            Trip File Library
+                        </h3>
+                        <button
+                            type="button"
+                            onClick={() => setShowLibraryPicker(false)}
+                            className="text-slate-400 hover:text-white p-1 hover:bg-white/5 rounded-lg transition"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                    <div className="p-4 max-h-[350px] overflow-y-auto custom-scroll space-y-2">
+                        {tripAttachments.length === 0 ? (
+                            <div className="text-center py-8 text-slate-500 text-sm italic">
+                                No attachments uploaded to this trip yet.
+                            </div>
+                        ) : (
+                            tripAttachments.map((att) => {
+                                const isAlreadySelected = pendingLibraryFiles.some(f => f.url === att.file_url)
+                                return (
+                                    <div
+                                        key={att.id}
+                                        onClick={() => {
+                                            if (isAlreadySelected) {
+                                                setPendingLibraryFiles(prev => prev.filter(f => f.url !== att.file_url))
+                                            } else {
+                                                setPendingLibraryFiles(prev => [...prev, {
+                                                    url: att.file_url,
+                                                    name: att.file_name,
+                                                    type: att.file_type,
+                                                    size: att.file_size
+                                                }])
+                                            }
+                                        }}
+                                        className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition border
+                                            ${isAlreadySelected 
+                                                ? 'bg-fuchsia-500/10 border-fuchsia-500/30' 
+                                                : 'bg-white/5 border-white/5 hover:bg-fuchsia-500/5 hover:border-fuchsia-500/10'
+                                            }`}
+                                    >
+                                        <div className="min-w-0 flex-1 flex items-center gap-3">
+                                            <Paperclip className="w-4 h-4 text-fuchsia-400 shrink-0" />
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-xs font-semibold text-slate-200 truncate">
+                                                    {att.file_name}
+                                                </p>
+                                                <p className="text-[10px] text-slate-500 mt-0.5">
+                                                    {(att.file_size / 1024).toFixed(1)} KB · {att.uploader_name || 'Guest'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition shrink-0
+                                                ${isAlreadySelected 
+                                                    ? 'bg-fuchsia-500 text-white' 
+                                                    : 'text-fuchsia-400 bg-fuchsia-500/10 hover:bg-fuchsia-500/20'
+                                                }`}
+                                        >
+                                            {isAlreadySelected ? 'Selected' : 'Select'}
+                                        </button>
+                                    </div>
+                                )
+                            })
+                        )}
+                    </div>
+                    <div className="p-3 border-t border-white/10 flex justify-end shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => setShowLibraryPicker(false)}
+                            className="btn-primary text-xs py-1.5 px-4 rounded-xl"
+                        >
+                            Done
+                        </button>
+                    </div>
+                </div>
+            </div>
         )}
         </div>
     )

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
     X, FolderOpen, FileText, FileImage, File, Search,
@@ -187,10 +188,17 @@ export default function FileManagerModal({
 
     const filteredSorted = useMemo(() => {
         const q = search.toLowerCase()
+        const seen = new Set<string>()
         let list = allAttachments
             .filter(a => singleTripId ? a.trip_id === singleTripId : true)
             .filter(a => tripFilter === 'all' || a.trip_id === tripFilter)
             .filter(a => !q || a.file_name.toLowerCase().includes(q))
+            .filter(a => {
+                if (!a.file_url) return false
+                if (seen.has(a.file_url)) return false
+                seen.add(a.file_url)
+                return true
+            })
 
         return list.sort((a, b) => {
             let cmp = 0
@@ -543,9 +551,10 @@ export default function FileManagerModal({
 
     if (embedded) return content
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
             {content}
-        </div>
+        </div>,
+        document.body
     )
 }
