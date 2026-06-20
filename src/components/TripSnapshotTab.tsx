@@ -586,7 +586,8 @@ export default function TripSnapshotTab({
                     
                     const mainRowHeight = rows * lineHeight
                     const commentHeight = commentLines.length > 0 ? (commentLines.length * commentLineHeight + 1) : 0
-                    const leftHeight = mainRowHeight + commentHeight
+                    const attachmentHeight = expense.attachment_url ? 4.5 : 0
+                    const leftHeight = mainRowHeight + commentHeight + attachmentHeight
 
                     // Splits
                     const splits = expense.expense_splits || []
@@ -610,11 +611,34 @@ export default function TripSnapshotTab({
                     pdf.text(`${currency} ${expense.amount.toLocaleString()}`, margin + contentWidth - 10, y, { align: 'right' })
 
                     // If comments exist, draw them below the title
+                    let currentLeftY = y + mainRowHeight + 0.5
                     if (commentLines.length > 0) {
                         pdf.setFontSize(7.5)
                         pdf.setFont('helvetica', 'italic')
                         pdf.setTextColor(110, 110, 110)
-                        pdf.text(commentLines, margin + 10, y + mainRowHeight + 0.5)
+                        pdf.text(commentLines, margin + 10, currentLeftY)
+                        pdf.setFont('helvetica', 'normal')
+                        pdf.setFontSize(9)
+                        currentLeftY += (commentLines.length * commentLineHeight) + 1
+                    }
+
+                    // If attachment exists, draw link below comments/title
+                    if (expense.attachment_url) {
+                        pdf.setFontSize(8)
+                        pdf.setFont('helvetica', 'bold')
+                        pdf.setTextColor(40, 80, 180) // Link blue color
+                        const text = `📎 Receipt: ${expense.attachment_name || 'View File'}`
+                        
+                        // We truncate attachment name if it is too long to fit
+                        const maxNameWidth = 45
+                        const truncatedText = pdf.splitTextToSize(text, maxNameWidth)[0]
+                        
+                        pdf.text(truncatedText, margin + 10, currentLeftY)
+                        
+                        // Add interactive link in the PDF
+                        const textWidth = pdf.getTextWidth(truncatedText)
+                        pdf.link(margin + 10, currentLeftY - 2.5, textWidth, 3, { url: expense.attachment_url })
+                        
                         pdf.setFont('helvetica', 'normal')
                         pdf.setFontSize(9)
                     }
