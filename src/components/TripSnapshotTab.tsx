@@ -564,7 +564,7 @@ export default function TripSnapshotTab({
 
                     // Calculate wrapped text dimensions
                     const maxPayerWidth = 60 // mm (Reduced from 70)
-                    const maxTitleWidth = 45 // mm
+                    const maxTitleWidth = expense.attachment_url ? 38 : 45 // mm
 
                     const payerLines = pdf.splitTextToSize(payerName, maxPayerWidth)
                     const pdfTitleForCalc = expense.expense_time ? `${expense.expense_time}  ${expense.title}` : expense.title
@@ -583,11 +583,10 @@ export default function TripSnapshotTab({
                     const lineHeight = 4
                     const commentLineHeight = 3.5
                     const rows = Math.max(payerLines.length, titleLines.length)
-                    
+
                     const mainRowHeight = rows * lineHeight
                     const commentHeight = commentLines.length > 0 ? (commentLines.length * commentLineHeight + 1) : 0
-                    const attachmentHeight = expense.attachment_url ? 4.5 : 0
-                    const leftHeight = mainRowHeight + commentHeight + attachmentHeight
+                    const leftHeight = mainRowHeight + commentHeight
 
                     // Splits
                     const splits = expense.expense_splits || []
@@ -606,39 +605,34 @@ export default function TripSnapshotTab({
                     pdf.setTextColor(50, 50, 50)
                     pdf.text(`${idx + 1}`, margin + 3, y)
                     pdf.text(titleLines, margin + 10, y)
+
+                    // Render inline [File] attachment link next to description
+                    if (expense.attachment_url) {
+                        const titleWidth = pdf.getTextWidth(titleLines[0])
+                        const linkX = margin + 10 + titleWidth + 2
+                        pdf.setFontSize(8)
+                        pdf.setFont('helvetica', 'bold')
+                        pdf.setTextColor(40, 80, 180) // Link blue color
+                        pdf.text('[File]', linkX, y)
+
+                        const linkWidth = pdf.getTextWidth('[File]')
+                        pdf.link(linkX, y - 2.5, linkWidth, 3.5, { url: expense.attachment_url })
+
+                        pdf.setFont('helvetica', 'normal')
+                        pdf.setFontSize(9)
+                        pdf.setTextColor(50, 50, 50)
+                    }
+
                     pdf.text(truncatedCategory, margin + 60, y)
                     pdf.text(payerLines, margin + 95, y) // Shifted RIGHT
                     pdf.text(`${currency} ${expense.amount.toLocaleString()}`, margin + contentWidth - 10, y, { align: 'right' })
 
                     // If comments exist, draw them below the title
-                    let currentLeftY = y + mainRowHeight + 0.5
                     if (commentLines.length > 0) {
                         pdf.setFontSize(7.5)
                         pdf.setFont('helvetica', 'italic')
                         pdf.setTextColor(110, 110, 110)
-                        pdf.text(commentLines, margin + 10, currentLeftY)
-                        pdf.setFont('helvetica', 'normal')
-                        pdf.setFontSize(9)
-                        currentLeftY += (commentLines.length * commentLineHeight) + 1
-                    }
-
-                    // If attachment exists, draw link below comments/title
-                    if (expense.attachment_url) {
-                        pdf.setFontSize(8)
-                        pdf.setFont('helvetica', 'bold')
-                        pdf.setTextColor(40, 80, 180) // Link blue color
-                        const text = `📎 Receipt: ${expense.attachment_name || 'View File'}`
-                        
-                        // We truncate attachment name if it is too long to fit
-                        const maxNameWidth = 45
-                        const truncatedText = pdf.splitTextToSize(text, maxNameWidth)[0]
-                        
-                        pdf.text(truncatedText, margin + 10, currentLeftY)
-                        
-                        // Add interactive link in the PDF
-                        const textWidth = pdf.getTextWidth(truncatedText)
-                        pdf.link(margin + 10, currentLeftY - 2.5, textWidth, 3, { url: expense.attachment_url })
-                        
+                        pdf.text(commentLines, margin + 10, y + mainRowHeight + 0.5)
                         pdf.setFont('helvetica', 'normal')
                         pdf.setFontSize(9)
                     }
