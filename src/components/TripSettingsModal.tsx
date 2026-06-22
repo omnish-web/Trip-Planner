@@ -825,6 +825,12 @@ function RolesSettings({ tripId, participants, currentUser, updateRole }: { trip
     }
 
     const handleDeleteMember = async (id: string, name: string) => {
+        const memberToDelete = participants.find(p => p.id === id)
+        if (memberToDelete?.role === 'owner') {
+            toast.error('The owner of the trip cannot be removed.')
+            return
+        }
+
         triggerConfirm(
             'Remove Member?',
             `Are you sure you want to remove ${name}?`,
@@ -974,26 +980,28 @@ function RolesSettings({ tripId, participants, currentUser, updateRole }: { trip
                             </div>
 
                             {/* Dependency Field */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    Status
-                                </label>
-                                <select
-                                    value={editParentId || 'independent'}
-                                    onChange={(e) => setEditParentId(e.target.value === 'independent' ? null : e.target.value)}
-                                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                                >
-                                    <option value="independent">Independent (Parent Member)</option>
-                                    {parents.filter(p => p.id !== editingMember.id).map(parent => (
-                                        <option key={parent.id} value={parent.id}>
-                                            Dependent of {getParticipantName(parent)}
-                                        </option>
-                                    ))}
-                                </select>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    {editParentId ? 'Dependent members have their expenses paid by their parent' : 'Independent members manage their own expenses'}
-                                </p>
-                            </div>
+                            {editingMember.role !== 'owner' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Status
+                                    </label>
+                                    <select
+                                        value={editParentId || 'independent'}
+                                        onChange={(e) => setEditParentId(e.target.value === 'independent' ? null : e.target.value)}
+                                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                                    >
+                                        <option value="independent">Independent (Parent Member)</option>
+                                        {parents.filter(p => p.id !== editingMember.id).map(parent => (
+                                            <option key={parent.id} value={parent.id}>
+                                                Dependent of {getParticipantName(parent)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        {editParentId ? 'Dependent members have their expenses paid by their parent' : 'Independent members manage their own expenses'}
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Role Field (only for independent members) */}
                             {!editParentId && editingMember.role !== 'owner' && (
