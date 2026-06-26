@@ -39,7 +39,7 @@ interface ImagePickerModalProps {
     onSelect: (url: string) => Promise<void>
     currentUrl?: string
     tripId: string
-    imageType: 'card' | 'cover'
+    imageType: 'card' | 'cover' | 'google_photos_cover'
 }
 
 type Tab = 'library' | 'upload' | 'gallery'
@@ -75,7 +75,7 @@ export default function ImagePickerModal({
     const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState | null>(null)
     const [deleting, setDeleting] = useState(false)
 
-    const label = imageType === 'card' ? 'Card Image' : 'Cover Image'
+    const label = imageType === 'card' ? 'Card Image' : imageType === 'cover' ? 'Cover Image' : 'Google Photos Cover'
 
     // ── Load Library ──────────────────────────────────────────────
     const loadLibrary = useCallback(async () => {
@@ -278,7 +278,7 @@ export default function ImagePickerModal({
                         <div>
                             <h3 className="text-base font-bold text-white">Change {label}</h3>
                             <p className="text-xs text-slate-400">
-                                {imageType === 'card' ? 'Dashboard thumbnail' : 'Trip page banner'}
+                                {imageType === 'card' ? 'Dashboard thumbnail' : imageType === 'cover' ? 'Trip page banner' : 'Google Photos Portal backdrop'}
                             </p>
                         </div>
                     </div>

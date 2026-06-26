@@ -96,12 +96,7 @@ export default function Dashboard() {
     const hour = new Date().getHours()
     const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
-    const filterConfig = [
-        { key: 'all' as const, label: 'All', count: trips.length, color: 'text-slate-300' },
-        { key: 'active' as const, label: 'Active', count: activeTrips.length, color: 'text-fuchsia-400' },
-        { key: 'upcoming' as const, label: 'Upcoming', count: upcomingTrips.length, color: 'text-indigo-400' },
-        { key: 'past' as const, label: 'Past', count: pastTrips.length, color: 'text-slate-500' },
-    ]
+
 
     const confirmDelete = async (e: React.MouseEvent, trip: Trip) => {
         e.stopPropagation()
