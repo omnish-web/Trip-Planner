@@ -235,7 +235,7 @@ export default function Dashboard() {
                 {/*  Stats Bar  */}
                 {trips.length > 0 && (
                     <div className="animate-fade-in-up" style={{ animationDelay: '100ms', animationFillMode: 'both' }}>
-                        <DashboardStats total={trips.length} active={activeTrips.length} upcoming={upcomingTrips.length} past={pastTrips.length} />
+                        <DashboardStats total={trips.length} active={activeTrips.length} upcoming={upcomingTrips.length} past={pastTrips.length} filter={filter} onFilterChange={setFilter} />
                     </div>
                 )}
 
@@ -319,24 +319,6 @@ export default function Dashboard() {
                                     <X className="w-4 h-4" />
                                 </button>
                             )}
-                        </div>
-                        <div className="flex items-center gap-1.5 p-1.5 bg-[#0a0f2c]/50 backdrop-blur-xl border border-white/5 rounded-2xl overflow-x-auto">
-                            {filterConfig.map(f => (
-                                <button
-                                    key={f.key}
-                                    id={`filter-${f.key}`}
-                                    onClick={() => setFilter(f.key)}
-                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold capitalize whitespace-nowrap transition-all duration-200 outline-none focus:ring-2 focus:ring-fuchsia-500/50 ${filter === f.key
-                                        ? 'bg-white/10 text-white shadow-lg border border-white/10'
-                                        : 'text-slate-500 hover:text-slate-300 hover:bg-white/5 border border-transparent'
-                                        }`}
-                                >
-                                    {f.label}
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-lg bg-black/30 font-black tabular-nums ${filter === f.key ? f.color : 'text-slate-600'}`}>
-                                        {f.count}
-                                    </span>
-                                </button>
-                            ))}
                         </div>
                     </div>
                 )}

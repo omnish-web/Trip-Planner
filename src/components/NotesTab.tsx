@@ -131,9 +131,9 @@ function NoteCard({
                 <div className="flex items-start justify-between gap-2 mb-1">
                     <div>
                         <span className="font-semibold text-slate-200 text-sm">{authorDisplay}</span>
-                        <span className="text-slate-500 text-xs ml-2" title={fullDate}>
+                        <span className="text-slate-500 text-xs ml-2" title={timeAgo}>
                             <Clock className="w-3 h-3 inline mr-1 mb-0.5" />
-                            {timeAgo}
+                            {fullDate}
                         </span>
                         {isEditing && (
                             <span className="ml-2 text-[10px] text-fuchsia-400 font-semibold uppercase tracking-wider">

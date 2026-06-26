@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { format, parseISO } from 'date-fns'
-import { Download, ChevronDown, ChevronUp, Paperclip } from 'lucide-react'
+import { Download, ChevronDown, ChevronUp, Paperclip, ImageIcon } from 'lucide-react'
 import jsPDF from 'jspdf'
 import { toast } from 'react-hot-toast'
+import { supabase } from '../lib/supabase'
+import { useQueryClient } from '@tanstack/react-query'
+import ImagePickerModal from './ImagePickerModal'
 
 interface TripSnapshotTabProps {
     trip: any
@@ -68,6 +71,23 @@ export default function TripSnapshotTab({
 }: TripSnapshotTabProps) {
 
     const [expandedExpenses, setExpandedExpenses] = useState<Set<string>>(new Set())
+    const [showImagePicker, setShowImagePicker] = useState(false)
+    const queryClient = useQueryClient()
+
+    const handleUpdateGooglePhotosImage = async (url: string) => {
+        try {
+            const { error } = await supabase
+                .from('trips')
+                .update({ google_photos_cover_url: url })
+                .eq('id', trip.id)
+            if (error) throw error
+            queryClient.invalidateQueries({ queryKey: ['trip', trip.id] })
+            setShowImagePicker(false)
+            toast.success('Card photo updated!')
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to update image')
+        }
+    }
 
     const toggleExpense = (id: string) => {
         setExpandedExpenses(prev => {
@@ -1252,9 +1272,62 @@ export default function TripSnapshotTab({
                             </div>
                         </div>
                     </div>
+                    
+                    {/* Google Photos Portal Card */}
+                    {trip.google_photos_url && (
+                        <div className="glass-panel p-6 w-full h-96 relative overflow-hidden group border border-blue-500/20 shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:shadow-[0_8px_40px_rgba(59,130,246,0.2)] transition-shadow">
+                            {/* Background Image */}
+                            <div className="absolute inset-0">
+                                <img
+                                    src={trip.google_photos_cover_url || 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=800&q=80'}
+                                    alt="Google Photos Background"
+                                    className="w-full h-full object-cover scale-100 group-hover:scale-105 transition-transform duration-700 ease-out"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-gray-900/95 via-gray-900/60 to-gray-900/20" />
+                            </div>
+                            
+                            {/* Edit Photo Button */}
+                            <button
+                                onClick={() => setShowImagePicker(true)}
+                                className="absolute top-4 right-4 z-20 w-10 h-10 rounded-xl bg-black/40 hover:bg-white text-white hover:text-black backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 border border-white/10 hover:border-transparent hover:scale-105"
+                                title="Change Background Photo"
+                            >
+                                <ImageIcon className="w-4 h-4" />
+                            </button>
+                            
+                            {/* Content */}
+                            <div className="relative z-10 flex flex-col h-full min-h-[160px] justify-end">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                                    <span className="text-[10px] font-black text-blue-300 uppercase tracking-widest drop-shadow-md">Memories</span>
+                                </div>
+                                <h3 className="text-2xl font-black text-white mb-4 drop-shadow-lg tracking-tight">Google Photos Album</h3>
+                                <a
+                                    href={trip.google_photos_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-white text-[#0a0f2c] font-black text-sm hover:bg-blue-50 transition-colors shadow-lg active:scale-95"
+                                >
+                                    Open Shared Album
+                                    <span className="text-lg leading-none">&rarr;</span>
+                                </a>
+                            </div>
+                        </div>
+                    )}
 
                 </div>
             </div>
+
+            {/* Google Photos Image Picker */}
+            {showImagePicker && (
+                <ImagePickerModal
+                    onClose={() => setShowImagePicker(false)}
+                    onSelect={handleUpdateGooglePhotosImage}
+                    currentUrl={trip.google_photos_cover_url}
+                    tripId={trip.id}
+                    imageType="cover"
+                />
+            )}
         </div>
     )
 }

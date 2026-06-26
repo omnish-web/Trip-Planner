@@ -16,7 +16,7 @@ interface ImageManagerModalProps {
     embedded?: boolean
 }
 
-type ImageSlot = 'card' | 'cover'
+type ImageSlot = 'card' | 'cover' | 'google_photos_cover'
 
 interface UploadState {
     tripId: string
@@ -39,12 +39,12 @@ export default function ImageManagerModal({ onClose, trips, singleTripId, embedd
 
     const handleUpdateSlotImage = async (url: string) => {
         if (!activePicker) return;
-        const column = activePicker.slot === 'card' ? 'card_image_url' : 'header_image_url';
+        const column = activePicker.slot === 'card' ? 'card_image_url' : activePicker.slot === 'cover' ? 'header_image_url' : 'google_photos_cover_url';
         const { error } = await supabase.from('trips').update({ [column]: url }).eq('id', activePicker.tripId);
         if (error) {
             toast.error('Failed to update image');
         } else {
-            toast.success(`${activePicker.slot === 'card' ? 'Card' : 'Cover'} image updated`);
+            toast.success(`${activePicker.slot === 'card' ? 'Card' : activePicker.slot === 'cover' ? 'Cover' : 'Google Photos'} image updated`);
             queryClient.invalidateQueries({ queryKey: ['trips'] });
             queryClient.invalidateQueries({ queryKey: ['trip', activePicker.tripId] });
             setActivePicker(null);
@@ -53,7 +53,7 @@ export default function ImageManagerModal({ onClose, trips, singleTripId, embedd
 
     const handleDelete = async (trip: Trip, slot: ImageSlot) => {
         setDeleting({ tripId: trip.id, slot })
-        const column = slot === 'card' ? 'card_image_url' : 'header_image_url'
+        const column = slot === 'card' ? 'card_image_url' : slot === 'cover' ? 'header_image_url' : 'google_photos_cover_url'
 
         try {
             // Only unlink — do NOT delete the file from Storage.
@@ -64,7 +64,7 @@ export default function ImageManagerModal({ onClose, trips, singleTripId, embedd
                 .eq('id', trip.id)
             if (error) throw error
 
-            toast.success(`${slot === 'card' ? 'Card' : 'Cover'} image unlinked (file kept in your library)`)
+            toast.success(`${slot === 'card' ? 'Card' : slot === 'cover' ? 'Cover' : 'Google Photos'} image unlinked (file kept in your library)`)
             queryClient.invalidateQueries({ queryKey: ['trips'] })
             queryClient.invalidateQueries({ queryKey: ['trip', trip.id] })
         } catch (err: any) {
@@ -115,6 +115,10 @@ export default function ImageManagerModal({ onClose, trips, singleTripId, embedd
                     <span className="w-3 h-3 rounded bg-fuchsia-500/60 border border-fuchsia-400/40 inline-block" />
                     <span><strong className="text-gray-700 dark:text-slate-300">Cover Image</strong> — banner on trip page</span>
                 </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
+                    <span className="w-3 h-3 rounded bg-blue-500/60 border border-blue-400/40 inline-block" />
+                    <span><strong className="text-gray-700 dark:text-slate-300">Google Photos</strong> — portal card background</span>
+                </div>
                 <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-slate-500">
                     <span>Removing a custom image reverts to a preset.</span>
                 </div>
@@ -132,8 +136,10 @@ export default function ImageManagerModal({ onClose, trips, singleTripId, embedd
                         const fallback = getPresetForTrip(trip.id)
                         const cardImg = trip.card_image_url || fallback
                         const coverImg = trip.header_image_url || fallback
+                        const googlePhotosImg = trip.google_photos_cover_url || fallback
                         const hasCustomCard = !!trip.card_image_url
                         const hasCustomCover = !!trip.header_image_url
+                        const hasCustomGooglePhotos = !!trip.google_photos_cover_url
 
                         return (
                             <div
@@ -148,20 +154,20 @@ export default function ImageManagerModal({ onClose, trips, singleTripId, embedd
                                     )}
                                 </div>
 
-                                {/* Two image slots side by side */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {(['card', 'cover'] as ImageSlot[]).map(slot => {
-                                        const imgSrc = slot === 'card' ? cardImg : coverImg
-                                        const hasCustom = slot === 'card' ? hasCustomCard : hasCustomCover
-                                        const slotLabel = slot === 'card' ? 'Card Image' : 'Cover Image'
-                                        const accentColor = slot === 'card' ? 'indigo' : 'fuchsia'
+                                {/* Three image slots */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {(['card', 'cover', 'google_photos_cover'] as ImageSlot[]).map(slot => {
+                                        const imgSrc = slot === 'card' ? cardImg : slot === 'cover' ? coverImg : googlePhotosImg
+                                        const hasCustom = slot === 'card' ? hasCustomCard : slot === 'cover' ? hasCustomCover : hasCustomGooglePhotos
+                                        const slotLabel = slot === 'card' ? 'Card Image' : slot === 'cover' ? 'Cover Image' : 'Google Photos'
+                                        const accentColor = slot === 'card' ? 'indigo' : slot === 'cover' ? 'fuchsia' : 'blue'
                                         const deletingSlot = isDeleting(trip.id, slot)
 
                                         return (
                                             <div key={slot} className="flex flex-col gap-2">
                                                 {/* Slot label */}
                                                 <div className="flex items-center gap-2">
-                                                    <span className={`w-2 h-2 rounded-full ${slot === 'card' ? 'bg-indigo-500' : 'bg-fuchsia-500'}`} />
+                                                    <span className={`w-2 h-2 rounded-full ${slot === 'card' ? 'bg-indigo-500' : slot === 'cover' ? 'bg-fuchsia-500' : 'bg-blue-500'}`} />
                                                     <span className="text-xs font-bold text-gray-400 dark:text-slate-400 uppercase tracking-wider">{slotLabel}</span>
                                                     {hasCustom ? (
                                                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/20 font-medium">

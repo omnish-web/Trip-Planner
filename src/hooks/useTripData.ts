@@ -18,6 +18,8 @@ export interface Trip {
     status?: 'active' | 'ended'
     ended_at?: string | null
     notes?: string
+    google_photos_url?: string
+    google_photos_cover_url?: string
 }
 
 interface Expense {
