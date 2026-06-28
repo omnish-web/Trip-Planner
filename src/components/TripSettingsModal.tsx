@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, Loader2, Save, Trash2, Plus, AlertTriangle, Settings, Check, Edit2, Power, RotateCcw, Images, FolderOpen, Mail } from 'lucide-react'
+import { X, Loader2, Save, Trash2, Plus, AlertTriangle, Settings, Check, Edit2, Power, RotateCcw, Images, FolderOpen } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import type { Trip } from '../hooks/useTripData'
 import { useUpdateTrip, useUpdateMemberRole } from '../hooks/useTripData'

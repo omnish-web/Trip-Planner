@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { X, Mail, Check, Trash2, Send, Inbox } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { supabase } from '../lib/supabase'

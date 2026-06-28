@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
     Plus, Calendar, MapPin, LogOut, Trash2, User, Edit2,
-    Images, FolderOpen, Search, X, Sparkles, TrendingUp, Check, Loader2, ArrowRight, Plane, CreditCard, Mail,
+    Images, FolderOpen, Search, X, Sparkles, TrendingUp, Check, Mail,
 } from 'lucide-react'
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns'
 import { toast } from 'react-hot-toast'
@@ -168,7 +168,7 @@ export default function Dashboard() {
         navigate('/')
     }
 
-    const handleRespondToInvite = async (inviteId: string, status: 'accepted' | 'rejected', tripId: string) => {
+    const handleRespondToInvite = async (inviteId: string, status: 'accepted' | 'rejected') => {
         try {
             if (status === 'accepted') {
                 const { error: rpcError } = await supabase.rpc('accept_trip_invitation', {
@@ -313,10 +313,10 @@ export default function Dashboard() {
                                         <div className="flex items-center gap-2">
                                             {invite.status === 'pending' ? (
                                                 <>
-                                                    <button onClick={() => handleRespondToInvite(invite.id, 'accepted', invite.trip_id)} className="w-10 h-10 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 flex items-center justify-center transition-colors" title="Accept Invite">
+                                                    <button onClick={() => handleRespondToInvite(invite.id, 'accepted')} className="w-10 h-10 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 flex items-center justify-center transition-colors" title="Accept Invite">
                                                         <Check className="w-5 h-5" />
                                                     </button>
-                                                    <button onClick={() => handleRespondToInvite(invite.id, 'rejected', invite.trip_id)} className="w-10 h-10 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 flex items-center justify-center transition-colors" title="Reject Invite">
+                                                    <button onClick={() => handleRespondToInvite(invite.id, 'rejected')} className="w-10 h-10 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 flex items-center justify-center transition-colors" title="Reject Invite">
                                                         <X className="w-5 h-5" />
                                                     </button>
                                                 </>

@@ -6,6 +6,7 @@ import { useTripInvites } from '../hooks/useTripData'
 
 interface Participant {
     id: string
+    user_id?: string
     name?: string
     parent_id?: string | null
     profiles?: {

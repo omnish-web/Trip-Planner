@@ -652,7 +652,7 @@ export function useUserProfile() {
 
             if (profileErr) throw profileErr
 
-            const { data: secrets, error: secretsErr } = await supabase
+            const { data: secrets } = await supabase
                 .from('user_secrets')
                 .select('passcode')
                 .eq('user_id', user.id)
