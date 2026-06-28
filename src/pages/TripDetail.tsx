@@ -18,6 +18,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import EndTripConfirmModal from '../components/EndTripConfirmModal'
 import { useTrip, useTripParticipants, useExpenses, useCurrentUser } from '../hooks/useTripData'
+import { useLiveCollaboration } from '../hooks/useLiveCollaboration'
 import StorageMeter from '../components/StorageMeter'
 
 
@@ -79,6 +80,9 @@ export default function TripDetail() {
     const { data: expenses = [], isLoading: loadingExpenses } = useExpenses(id)
     const { data: user = null } = useCurrentUser()
     const currentUser = user?.id || null
+
+    // Enable Realtime live collaboration for this trip
+    useLiveCollaboration(id)
 
     const loading = loadingTrip || loadingParticipants || loadingExpenses
 
@@ -271,9 +275,18 @@ export default function TripDetail() {
     const { balances, settlements } = useMemo(() => {
         if (!expenses.length || !participants.length) return { balances: [], settlements: [] }
 
+        // Helper to resolve a participant ID to their parent's ID (if they are a dependent)
+        const getEffectiveId = (id: string) => {
+            const participant = participants.find(p => p.id === id)
+            return participant?.parent_id || id
+        }
+
         // 1. Calculate Net Balances
         const balancesMap: Record<string, number> = {}
-        participants.forEach(p => balancesMap[p.id] = 0)
+        // Only initialize independent members (parents/individuals)
+        participants.forEach(p => {
+            if (!p.parent_id) balancesMap[p.id] = 0
+        })
 
         expenses.forEach(expense => {
             const splits = expense.expense_splits || []
@@ -282,16 +295,19 @@ export default function TripDetail() {
             // Payer gets +amount
             if (payers.length > 0) {
                 payers.forEach((p: any) => {
-                    balancesMap[p.participant_id] = (balancesMap[p.participant_id] || 0) + p.amount
+                    const effectiveId = getEffectiveId(p.participant_id)
+                    balancesMap[effectiveId] = (balancesMap[effectiveId] || 0) + p.amount
                 })
             } else if (expense.paid_by) {
                 // Fallback
-                balancesMap[expense.paid_by] = (balancesMap[expense.paid_by] || 0) + expense.amount
+                const effectiveId = getEffectiveId(expense.paid_by)
+                balancesMap[effectiveId] = (balancesMap[effectiveId] || 0) + expense.amount
             }
 
             // Debtors get -splitAmount
             splits.forEach((split: any) => {
-                balancesMap[split.participant_id] = (balancesMap[split.participant_id] || 0) - split.amount
+                const effectiveId = getEffectiveId(split.participant_id)
+                balancesMap[effectiveId] = (balancesMap[effectiveId] || 0) - split.amount
             })
         })
 

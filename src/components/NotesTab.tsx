@@ -384,9 +384,9 @@ export default function NotesTab({
     const canDeleteNote = (note: TripNote) =>
         isOwner || note.user_id === currentUserId
 
-    // Only the note's own author can edit (not even the owner — preserves intent)
+    // Owners and note authors can edit
     const canEditNote = (note: TripNote) =>
-        note.user_id === currentUserId
+        isOwner || note.user_id === currentUserId
 
     const handleEditStart = (note: TripNote) => {
         setEditingNoteId(note.id)

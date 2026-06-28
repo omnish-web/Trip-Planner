@@ -3,16 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
     Plus, Calendar, MapPin, LogOut, Trash2, User, Edit2,
-    Images, FolderOpen, Search, X, Sparkles, TrendingUp,
+    Images, FolderOpen, Search, X, Sparkles, TrendingUp, Check, Loader2, ArrowRight, Plane, CreditCard, Mail,
 } from 'lucide-react'
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import EditProfileModal from '../components/EditProfileModal'
-import { useTrips, type Trip, useCurrentUser } from '../hooks/useTripData'
+import { useTrips, type Trip, useCurrentUser, useUserProfile, useReceivedInvites } from '../hooks/useTripData'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTheme } from '../hooks/useTheme'
 import TripTimeline from '../components/TripTimeline'
+import InvitationsHubModal from '../components/InvitationsHubModal'
 import CosmicMap from '../components/CosmicMap'
 import CreateTripModal from '../components/CreateTripModal'
 import ImageManagerModal from '../components/ImageManagerModal'
@@ -27,11 +28,14 @@ export default function Dashboard() {
     const queryClient = useQueryClient()
 
     const { data: user = null } = useCurrentUser()
+    const { data: userProfile } = useUserProfile()
     const { data: trips = [] } = useTrips(user?.id || null)
+    const { data: receivedInvites = [], refetch: refetchInvites } = useReceivedInvites()
 
     const { isDark } = useTheme()
 
     const [showCreateModal, setShowCreateModal] = useState(false)
+    const [showInvitesHub, setShowInvitesHub] = useState(false)
     const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
     const [showProfileModal, setShowProfileModal] = useState(false)
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -75,6 +79,16 @@ export default function Dashboard() {
     const activeTrips = trips.filter((t: Trip) => getTripCategory(t) === 'active')
     const upcomingTrips = trips.filter((t: Trip) => getTripCategory(t) === 'upcoming')
     const pastTrips = trips.filter((t: Trip) => getTripCategory(t) === 'past')
+
+    // Filter invites for dashboard (only show pending invites < 24 hours old)
+    const recentInvites = receivedInvites.filter(invite => {
+        if (invite.status !== 'pending') return false
+
+        const inviteDate = new Date(invite.created_at).getTime()
+        const now = new Date().getTime()
+        const diffHours = (now - inviteDate) / (1000 * 60 * 60)
+        return diffHours <= 24
+    })
 
     // Next upcoming trip (soonest)
     const nextTrip = upcomingTrips
@@ -154,6 +168,42 @@ export default function Dashboard() {
         navigate('/')
     }
 
+    const handleRespondToInvite = async (inviteId: string, status: 'accepted' | 'rejected', tripId: string) => {
+        try {
+            if (status === 'accepted') {
+                const { error: rpcError } = await supabase.rpc('accept_trip_invitation', {
+                    p_invite_id: inviteId
+                })
+                if (rpcError) throw rpcError
+
+                toast.success('Invitation accepted! Welcome to the trip.')
+                queryClient.invalidateQueries({ queryKey: ['trips'] })
+            } else {
+                const { error } = await supabase
+                    .from('trip_invitations')
+                    .update({ status })
+                    .eq('id', inviteId)
+                if (error) throw error
+
+                toast.success('Invitation rejected.')
+            }
+            refetchInvites()
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to respond to invite')
+        }
+    }
+
+    const handleDeleteInvite = async (inviteId: string) => {
+        try {
+            const { error } = await supabase.from('trip_invitations').update({ invitee_deleted: true }).eq('id', inviteId)
+            if (error) throw error
+            toast.success('Invitation removed')
+            refetchInvites()
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to delete invitation')
+        }
+    }
+
     return (
         <div className={`min-h-screen bg-[#060a1f] text-slate-200 font-work-sans pb-24 relative overflow-hidden selection:bg-fuchsia-500/30 selection:text-fuchsia-100 ${isDark ? 'dark' : ''}`}>
             {/*  Background  */}
@@ -178,6 +228,12 @@ export default function Dashboard() {
                     <div className="hidden md:block">
                         <StorageMeter userId={user?.id || null} compact={true} />
                     </div>
+                    <button onClick={() => setShowInvitesHub(true)} className="relative hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 text-slate-300 transition-all outline-none focus:ring-2 focus:ring-fuchsia-500/50" title="Invitations Hub">
+                        <Mail className="w-5 h-5" />
+                        {receivedInvites.some(i => i.status === 'pending') && (
+                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-fuchsia-500 rounded-full border-2 border-[#060a1f]"></span>
+                        )}
+                    </button>
                     <button onClick={() => setShowImageManager(true)} className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 text-slate-300 transition-all outline-none focus:ring-2 focus:ring-fuchsia-500/50" title="Image Manager">
                         <Images className="w-5 h-5" />
                     </button>
@@ -197,10 +253,10 @@ export default function Dashboard() {
                 </div>
             </header>
 
-            <main className="pt-28 px-4 sm:px-8 max-w-[1600px] mx-auto w-full flex flex-col gap-8 relative z-10">
+            <main className="pt-24 px-4 sm:px-8 max-w-[1600px] mx-auto w-full flex flex-col gap-8 relative z-10">
 
                 {/*  Hero  */}
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 px-1 pt-4 animate-fade-in-up" style={{ animationFillMode: 'both' }}>
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 px-1 animate-fade-in-up" style={{ animationFillMode: 'both' }}>
                     <div className="flex-1 min-w-0">
                         <p className="text-xs font-bold uppercase tracking-[0.25em] text-fuchsia-400/70 mb-2 flex items-center gap-2">
                             <Sparkles className="w-3 h-3" /> {greeting}
@@ -208,6 +264,73 @@ export default function Dashboard() {
                         <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/40 capitalize tracking-tighter mb-3 pb-1">
                             {userName}.
                         </h2>
+                        {userProfile?.username_id && (
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 backdrop-blur-sm" title="Share this ID to receive trip invitations">
+                                    <User className="w-3.5 h-3.5 text-slate-400" />
+                                    <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">User ID</span>
+                                    <span className="text-sm font-mono font-bold text-fuchsia-300 ml-1">{userProfile.username_id}</span>
+                                    <button onClick={() => {
+                                        navigator.clipboard.writeText(userProfile.username_id || '')
+                                        toast.success('User ID copied to clipboard!')
+                                    }} className="ml-1 text-slate-500 hover:text-white transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                    </button>
+                                </div>
+                                <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 backdrop-blur-sm group cursor-pointer relative" onClick={() => {
+                                    navigator.clipboard.writeText(userProfile.passcode || '')
+                                    toast.success('Passcode copied to clipboard!')
+                                }}>
+                                    <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Passcode</span>
+                                    <span className="text-sm font-mono font-bold text-indigo-300 filter blur-sm group-hover:blur-none transition-all duration-300 ml-1">{userProfile.passcode}</span>
+                                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-lg border border-white/10">Click to copy (Secret)</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Recent Invites Feed */}
+                        {recentInvites.length > 0 && (
+                            <div className="flex flex-col gap-3 mb-6">
+                                {recentInvites.map(invite => (
+                                    <div key={invite.id} className={`flex items-center justify-between border rounded-xl p-4 shadow-lg backdrop-blur-md transition-all ${invite.status === 'pending' ? 'bg-fuchsia-900/20 border-fuchsia-500/30' :
+                                            invite.status === 'accepted' ? 'bg-emerald-900/10 border-emerald-500/20' :
+                                                'bg-slate-900/40 border-slate-700/50'
+                                        }`}>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className={`text-sm font-medium ${invite.status === 'pending' ? 'text-fuchsia-200' : 'text-slate-400'}`}>
+                                                <strong className="text-white">{invite.inviter?.full_name || 'Someone'}</strong> (ID: {invite.inviter?.username_id || '?'}) invited you to
+                                            </span>
+                                            <span className={`text-lg font-black ${invite.status === 'pending' ? 'text-white' : 'text-slate-300'}`}>
+                                                {invite.trip?.title || 'a trip'}
+                                            </span>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${invite.status === 'accepted' ? 'bg-emerald-500/20 text-emerald-400' :
+                                                    invite.status === 'pending' ? 'bg-amber-500/20 text-amber-400' :
+                                                        'bg-slate-700 text-slate-300'
+                                                }`}>
+                                                {invite.status}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {invite.status === 'pending' ? (
+                                                <>
+                                                    <button onClick={() => handleRespondToInvite(invite.id, 'accepted', invite.trip_id)} className="w-10 h-10 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 flex items-center justify-center transition-colors" title="Accept Invite">
+                                                        <Check className="w-5 h-5" />
+                                                    </button>
+                                                    <button onClick={() => handleRespondToInvite(invite.id, 'rejected', invite.trip_id)} className="w-10 h-10 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 flex items-center justify-center transition-colors" title="Reject Invite">
+                                                        <X className="w-5 h-5" />
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button onClick={() => handleDeleteInvite(invite.id)} className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-colors" title="Remove Notification">
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         <p className="text-slate-400 text-base sm:text-lg font-medium">
                             {trips.length === 0
                                 ? "Your adventure map is empty. Let's change that."
@@ -500,6 +623,10 @@ export default function Dashboard() {
                         <span className="text-rose-200">This trip contains <strong className="text-white">{expenseCount}</strong> financial entries. Deleting it will permanently vaporize all related data.</span>
                     </div>
                 ) : undefined}
+            />
+            <InvitationsHubModal
+                isOpen={showInvitesHub}
+                onClose={() => setShowInvitesHub(false)}
             />
         </div>
     )
