@@ -21,6 +21,7 @@
     "lucide-react": "^0.563.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-easy-crop": "^6.0.2",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.13.0",
     "react-simple-maps": "^3.0.0",

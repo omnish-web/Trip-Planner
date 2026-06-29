@@ -1,11 +1,13 @@
-
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, Loader2, Mail, User, UserPlus, Users } from 'lucide-react'
+import { X, Loader2, Key, User, UserPlus, Users, Search, Mail, Trash2, Check, Send, Inbox, CheckCircle, AlertCircle } from 'lucide-react'
 import { toast } from 'react-hot-toast'
+import { useTripInvites, useTripReceivedInvite } from '../hooks/useTripData'
+import { useQueryClient } from '@tanstack/react-query'
 
 interface Participant {
     id: string
+    user_id?: string
     name?: string
     parent_id?: string | null
     profiles?: {
@@ -21,13 +23,49 @@ interface AddMemberModalProps {
     participants?: Participant[] // Existing participants to enable parent linking
 }
 
+type Mode = 'invite' | 'direct' | 'guest' | 'manage'
+
 export default function AddMemberModal({ tripId, onClose, onSuccess, participants = [] }: AddMemberModalProps) {
     const [loading, setLoading] = useState(false)
-    const [email, setEmail] = useState('')
+    const [mode, setMode] = useState<Mode>('invite')
+    const [usernameId, setUsernameId] = useState('')
+    const [passcode, setPasscode] = useState('')
     const [guestName, setGuestName] = useState('')
-    const [isGuestMode, setIsGuestMode] = useState(false)
     const [parentId, setParentId] = useState<string>('') // Empty = independent member
     const [message, setMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null)
+
+    // Live user lookup state for Send Invite form
+    const [foundUser, setFoundUser] = useState<{ id: string, full_name: string, username_id: string } | null>(null)
+    const [lookupLoading, setLookupLoading] = useState(false)
+
+    const queryClient = useQueryClient()
+
+    // Debounced live lookup: fires 400ms after the inviter stops typing
+    useEffect(() => {
+        const trimmed = usernameId.trim().toUpperCase()
+        // Only lookup when we have a complete 6-char User-ID (both invite and direct modes)
+        if ((mode !== 'invite' && mode !== 'direct') || trimmed.length < 6) {
+            setFoundUser(null)
+            setLookupLoading(false)
+            return
+        }
+        setLookupLoading(true)
+        const timer = setTimeout(async () => {
+            const { data } = await supabase
+                .from('profiles')
+                .select('id, full_name, username_id')
+                .eq('username_id', trimmed)
+                .single()
+            setFoundUser(data || null)
+            setLookupLoading(false)
+        }, 400)
+        return () => clearTimeout(timer)
+    }, [usernameId, mode])
+
+    // Fetch pending invites for the "Manage Invites" tab (sent by current user for this trip)
+    const { data: tripInvites = [], refetch: refetchInvites } = useTripInvites(tripId)
+    // Fetch invitations received by current user for this specific trip
+    const { data: receivedInvite = [], refetch: refetchReceived } = useTripReceivedInvite(tripId)
 
     // Filter to show only parent members (those without a parent_id)
     const parentMembers = participants.filter(p => !p.parent_id)
@@ -42,7 +80,10 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
         setMessage(null)
 
         try {
-            if (isGuestMode) {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) throw new Error('Not authenticated')
+
+            if (mode === 'guest') {
                 // Add Guest
                 const { error } = await supabase
                     .from('trip_participants')
@@ -54,42 +95,105 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                     })
                 if (error) throw error
                 toast.success(`Guest "${guestName}" added!`)
-            } else {
-                // Invite Existing User
-                const { data: profiles, error: profileError } = await supabase
+            } else if (mode === 'invite') {
+                // Invite Existing User by User-ID
+                const { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .select('id, full_name')
-                    .eq('email', email)
+                    .eq('username_id', usernameId)
                     .single()
 
-                if (profileError || !profiles) {
-                    throw new Error('User not found. Ask them to sign up first!')
+                if (profileError || !profile) {
+                    throw new Error('User not found. Please check the User-ID!')
                 }
 
-                const { error: inviteError } = await supabase
-                    .from('trip_participants')
-                    .insert({
-                        trip_id: tripId,
-                        user_id: profiles.id,
-                        role: 'editor',
-                        parent_id: parentId || null
-                    })
+                // Check if user is already a member
+                const isAlreadyMember = participants.some(p => p.user_id === profile.id)
+                if (isAlreadyMember) {
+                    throw new Error('This user is already a member of the trip.')
+                }
+
+                const { error: inviteError } = await supabase.rpc('send_trip_invitation', {
+                    p_trip_id: tripId,
+                    p_invitee_id: profile.id
+                })
 
                 if (inviteError) {
-                    if (inviteError.code === '23505') throw new Error('User is already in this trip')
-                    throw inviteError
+                    throw new Error(inviteError.message || 'Failed to send invitation')
                 }
-                toast.success(`Invited ${profiles.full_name || email}`)
+                toast.success(`Invitation sent to ${profile.full_name || usernameId}!`)
+                // Invalidate caches so InvitationsHub and Manage Invites reflect the new invite immediately
+                queryClient.invalidateQueries({ queryKey: ['sentInvites'] })
+                queryClient.invalidateQueries({ queryKey: ['tripInvites', tripId] })
+                queryClient.invalidateQueries({ queryKey: ['myInvites'] })
+            } else if (mode === 'direct') {
+                // Direct Add via RPC
+                const { data: res, error: rpcError } = await supabase.rpc('direct_add_user', {
+                    p_username_id: usernameId,
+                    p_passcode: passcode,
+                    p_trip_id: tripId
+                })
+
+                if (rpcError) throw new Error(rpcError.message || 'Direct add failed')
+                
+                // If they need to be a dependent, update their parent_id
+                if (parentId && res?.user_id) {
+                    await supabase
+                        .from('trip_participants')
+                        .update({ parent_id: parentId })
+                        .eq('trip_id', tripId)
+                        .eq('user_id', res.user_id)
+                }
+
+                toast.success('User successfully added to trip!')
             }
 
             onSuccess()
-            onClose()
+            if (mode !== 'manage') onClose()
         } catch (error: any) {
             console.error('Error adding member:', error)
             toast.error(error.message || 'Failed to add member')
             setMessage({ type: 'error', text: error.message || 'Failed to add member' })
         } finally {
             setLoading(false)
+        }
+    }
+
+    const handleCancelInvite = async (inviteId: string) => {
+        try {
+            const { error } = await supabase
+                .from('trip_invitations')
+                .update({ inviter_deleted: true })
+                .eq('id', inviteId)
+
+            if (error) throw error
+            toast.success('Invitation hidden/revoked')
+            refetchInvites()
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to cancel invitation')
+        }
+    }
+
+    const handleRespondToInvite = async (inviteId: string, status: 'accepted' | 'rejected') => {
+        try {
+            if (status === 'accepted') {
+                const { error } = await supabase.rpc('accept_trip_invitation', { p_invite_id: inviteId })
+                if (error) throw error
+                toast.success('Invitation accepted! Welcome to the trip.')
+                queryClient.invalidateQueries({ queryKey: ['trips'] })
+                onSuccess()
+            } else {
+                const { error } = await supabase
+                    .from('trip_invitations')
+                    .update({ status: 'rejected' })
+                    .eq('id', inviteId)
+                if (error) throw error
+                toast.success('Invitation rejected.')
+            }
+            refetchReceived()
+            refetchInvites()
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to respond to invite')
         }
     }
 
@@ -117,41 +221,298 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                     </div>
                 )}
 
-                <div className="flex gap-4 mb-4 border-b border-gray-100 dark:border-gray-700">
+                <div className="flex gap-4 mb-4 border-b border-gray-100 dark:border-gray-700 pb-2 overflow-x-auto no-scrollbar">
                     <button
-                        className={`pb-2 text-sm font-semibold ${!isGuestMode ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}
-                        onClick={() => setIsGuestMode(false)}
+                        className={`text-sm font-semibold whitespace-nowrap transition-colors ${mode === 'invite' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        onClick={() => setMode('invite')}
                     >
-                        Invite User
+                        Send Invite
                     </button>
                     <button
-                        className={`pb-2 text-sm font-semibold ${isGuestMode ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}
-                        onClick={() => setIsGuestMode(true)}
+                        className={`text-sm font-semibold whitespace-nowrap transition-colors ${mode === 'direct' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        onClick={() => setMode('direct')}
+                    >
+                        Direct Add
+                    </button>
+                    <button
+                        className={`text-sm font-semibold whitespace-nowrap transition-colors ${mode === 'guest' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        onClick={() => setMode('guest')}
                     >
                         Add Guest
                     </button>
+                    <button
+                        className={`text-sm font-semibold whitespace-nowrap transition-colors ${mode === 'manage' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        onClick={() => {
+                            setMode('manage')
+                            refetchInvites()
+                            refetchReceived()
+                        }}
+                    >
+                        Manage Invites
+                        {(tripInvites.length + receivedInvite.length) > 0 && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold">
+                                {tripInvites.length + receivedInvite.length}
+                            </span>
+                        )}
+                    </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    {!isGuestMode ? (
+                {mode === 'manage' ? (
+                    <div className="space-y-5">
+
+                        {/* ── Sent Invitations ── */}
                         <div>
-                            <label className="compact-label">Email Address</label>
-                            <div className="relative">
-                                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                                <input
-                                    type="email"
-                                    required
-                                    className="compact-input !pl-10"
-                                    placeholder="friend@example.com"
-                                    value={email}
-                                    onChange={e => setEmail(e.target.value)}
-                                />
-                            </div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                                <strong>Note:</strong> Users must create an account on TripPlanner before you can invite them.
-                            </p>
+                            <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1.5">
+                                <Send className="w-3 h-3" /> Sent Invitations
+                            </h3>
+                            {tripInvites.length === 0 ? (
+                                <div className="text-center py-4 text-gray-400 dark:text-gray-500">
+                                    <p className="text-sm">No invitations sent for this trip.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1 custom-scrollbar">
+                                    {tripInvites.map((invite: any) => (
+                                        <div key={invite.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 bg-blue-100 text-blue-700">
+                                                    {(invite.invitee?.full_name?.[0] || 'U').toUpperCase()}
+                                                </div>
+                                                <div className="truncate">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-medium text-sm text-gray-900 dark:text-white truncate">
+                                                            {invite.invitee?.full_name || 'Unknown User'}
+                                                        </p>
+                                                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${
+                                                            invite.status === 'accepted' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                                            invite.status === 'pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                                            'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                                                        }`}>
+                                                            {invite.status}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 font-mono">ID: {invite.invitee?.username_id}</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => handleCancelInvite(invite.id)}
+                                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0"
+                                                title="Revoke / Cancel Invitation"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    ) : (
+
+                        {/* ── Received Invitations ── */}
+                        <div>
+                            <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1.5">
+                                <Inbox className="w-3 h-3" /> Received Invitations
+                            </h3>
+                            {receivedInvite.length === 0 ? (
+                                <div className="text-center py-4 text-gray-400 dark:text-gray-500">
+                                    <p className="text-sm">No received invitations for this trip.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1 custom-scrollbar">
+                                    {receivedInvite.map((invite: any) => (
+                                        <div key={invite.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 bg-purple-100 text-purple-700">
+                                                    {(invite.inviter?.full_name?.[0] || 'U').toUpperCase()}
+                                                </div>
+                                                <div className="truncate">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-medium text-sm text-gray-900 dark:text-white truncate">
+                                                            From: <strong>{invite.inviter?.full_name || 'Someone'}</strong>
+                                                        </p>
+                                                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${
+                                                            invite.status === 'accepted' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                                            invite.status === 'pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                                            'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                                                        }`}>
+                                                            {invite.status}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500">{new Date(invite.created_at).toLocaleDateString()}</p>
+                                                </div>
+                                            </div>
+                                            {invite.status === 'pending' ? (
+                                                <div className="flex gap-1 shrink-0">
+                                                    <button
+                                                        onClick={() => handleRespondToInvite(invite.id, 'accepted')}
+                                                        className="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
+                                                        title="Accept"
+                                                    >
+                                                        <Check className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleRespondToInvite(invite.id, 'rejected')}
+                                                        className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                                                        title="Reject"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={async () => {
+                                                        const { error } = await supabase
+                                                            .from('trip_invitations')
+                                                            .update({ invitee_deleted: true })
+                                                            .eq('id', invite.id)
+                                                        if (!error) { toast.success('Hidden from history'); refetchReceived() }
+                                                        else toast.error('Failed to hide')
+                                                    }}
+                                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0"
+                                                    title="Hide from history"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                    </div>
+                ) : (
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                    {mode === 'invite' && (
+                        <div>
+                            <label className="compact-label">User-ID</label>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                <input
+                                    type="text"
+                                    required
+                                    className="compact-input !pl-10 font-mono uppercase"
+                                    placeholder="e.g. 8F2A9B"
+                                    maxLength={6}
+                                    value={usernameId}
+                                    onChange={e => setUsernameId(e.target.value.toUpperCase())}
+                                />
+                                {lookupLoading && (
+                                    <Loader2 className="absolute right-3 top-2.5 h-4 w-4 text-gray-400 animate-spin" />
+                                )}
+                            </div>
+
+                            {/* ── Live user preview ── */}
+                            {!lookupLoading && foundUser && (
+                                <>
+                                    <div className="mt-2 flex items-center gap-3 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 animate-fade-in">
+                                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-white flex items-center justify-center text-sm font-bold shrink-0 shadow-sm">
+                                            {(foundUser.full_name?.[0] || 'U').toUpperCase()}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 truncate">
+                                                {foundUser.full_name || 'Unknown User'}
+                                            </p>
+                                            <p className="text-[11px] text-emerald-600/70 dark:text-emerald-500 font-mono">
+                                                ID: {foundUser.username_id}
+                                            </p>
+                                        </div>
+                                        <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                                    </div>
+                                    {participants.some(p => p.user_id === foundUser.id) && (
+                                        <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-1.5">
+                                            <AlertCircle className="w-3 h-3 shrink-0" />
+                                            This user is already a member of this trip.
+                                        </p>
+                                    )}
+                                </>
+                            )}
+
+                            {!lookupLoading && !foundUser && usernameId.trim().length >= 6 && (
+                                <p className="text-xs text-red-500 dark:text-red-400 flex items-center gap-1 mt-2">
+                                    <AlertCircle className="w-3 h-3 shrink-0" /> No user found with this ID.
+                                </p>
+                            )}
+
+                            {usernameId.trim().length < 6 && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                    Send a notification to this user to join your trip. They must approve the invite.
+                                </p>
+                            )}
+                        </div>
+                    )}
+                    
+                    {mode === 'direct' && (
+                        <>
+                            <div>
+                                <label className="compact-label">User-ID</label>
+                                <div className="relative">
+                                    <User className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        required
+                                        className="compact-input !pl-10 font-mono uppercase"
+                                        placeholder="e.g. 8F2A9B"
+                                        maxLength={6}
+                                        value={usernameId}
+                                        onChange={e => setUsernameId(e.target.value.toUpperCase())}
+                                    />
+                                    {lookupLoading && (
+                                        <Loader2 className="absolute right-3 top-2.5 h-4 w-4 text-gray-400 animate-spin" />
+                                    )}
+                                </div>
+
+                                {/* ── Live user preview ── */}
+                                {!lookupLoading && foundUser && (
+                                    <>
+                                        <div className="mt-2 flex items-center gap-3 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 animate-fade-in">
+                                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-white flex items-center justify-center text-sm font-bold shrink-0 shadow-sm">
+                                                {(foundUser.full_name?.[0] || 'U').toUpperCase()}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 truncate">
+                                                    {foundUser.full_name || 'Unknown User'}
+                                                </p>
+                                                <p className="text-[11px] text-emerald-600/70 dark:text-emerald-500 font-mono">
+                                                    ID: {foundUser.username_id}
+                                                </p>
+                                            </div>
+                                            <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                                        </div>
+                                        {participants.some(p => p.user_id === foundUser.id) && (
+                                            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-1.5">
+                                                <AlertCircle className="w-3 h-3 shrink-0" />
+                                                This user is already a member of this trip.
+                                            </p>
+                                        )}
+                                    </>
+                                )}
+
+                                {!lookupLoading && !foundUser && usernameId.trim().length >= 6 && (
+                                    <p className="text-xs text-red-500 dark:text-red-400 flex items-center gap-1 mt-2">
+                                        <AlertCircle className="w-3 h-3 shrink-0" /> No user found with this ID.
+                                    </p>
+                                )}
+                            </div>
+                            <div>
+                                <label className="compact-label">Secret Passcode</label>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        required
+                                        className="compact-input !pl-10 font-mono"
+                                        placeholder="e.g. X72Y9Z"
+                                        value={passcode}
+                                        onChange={e => setPasscode(e.target.value)}
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                    Entering their secret passcode adds them instantly without needing their approval.
+                                </p>
+                            </div>
+                        </>
+                    )}
+
+                    {mode === 'guest' && (
                         <div>
                             <label className="compact-label">Guest Name</label>
                             <div className="relative">
@@ -199,11 +560,15 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                     <button
                         type="submit"
                         disabled={loading}
-                        className="btn-primary w-full flex justify-center items-center gap-2 mt-4"
+                        className="btn-primary w-full flex justify-center items-center gap-2 mt-4 bg-blue-600 hover:bg-blue-700"
                     >
-                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isGuestMode ? 'Add Guest' : 'Send Invite')}
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                            mode === 'guest' ? 'Add Guest' : 
+                            mode === 'direct' ? 'Add Instantly' : 'Send Invite'
+                        )}
                     </button>
                 </form>
+                )}
             </div>
         </div>
     )

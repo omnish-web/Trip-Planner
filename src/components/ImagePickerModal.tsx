@@ -3,6 +3,7 @@ import { X, Check, Upload, Image as ImageIcon, Loader2, AlertCircle, FolderOpen,
 import { supabase } from '../lib/supabase'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
+import ImageCropper from './ImageCropper'
 
 // Deterministic fallback preset based on trip ID
 export const PRESET_IMAGES = [
@@ -38,7 +39,7 @@ interface ImagePickerModalProps {
     onSelect: (url: string) => Promise<void>
     currentUrl?: string
     tripId: string
-    imageType: 'card' | 'cover'
+    imageType: 'card' | 'cover' | 'google_photos_cover'
 }
 
 type Tab = 'library' | 'upload' | 'gallery'
@@ -61,6 +62,10 @@ export default function ImagePickerModal({
     const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
+    // Cropping state
+    const [cropImageSrc, setCropImageSrc] = useState<string | null>(null)
+    const [originalFileName, setOriginalFileName] = useState<string>('cropped.jpg')
+
     // Library state
     const [libraryImages, setLibraryImages] = useState<string[]>([])
     const [loadingLibrary, setLoadingLibrary] = useState(false)
@@ -70,7 +75,7 @@ export default function ImagePickerModal({
     const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState | null>(null)
     const [deleting, setDeleting] = useState(false)
 
-    const label = imageType === 'card' ? 'Card Image' : 'Cover Image'
+    const label = imageType === 'card' ? 'Card Image' : imageType === 'cover' ? 'Cover Image' : 'Google Photos Cover'
 
     // ── Load Library ──────────────────────────────────────────────
     const loadLibrary = useCallback(async () => {
@@ -109,7 +114,8 @@ export default function ImagePickerModal({
     }, [activeTab, loadLibrary])
 
     // ── Upload ────────────────────────────────────────────────────
-    const handleFileUpload = useCallback(async (file: File) => {
+    // Stage 1: File selection & enter crop mode
+    const handleFileSelect = (file: File) => {
         if (!file.type.startsWith('image/')) {
             setUploadError('Please select an image file (JPG, PNG, WebP, etc.)')
             return
@@ -120,19 +126,32 @@ export default function ImagePickerModal({
         }
 
         setUploadError(null)
+        setOriginalFileName(file.name)
+        
+        // Read file as Data URL to pass to cropper
+        const reader = new FileReader()
+        reader.onload = () => {
+            setCropImageSrc(reader.result as string)
+        }
+        reader.readAsDataURL(file)
+    }
+
+    // Stage 2: Upload the cropped file
+    const handleUploadCropped = useCallback(async (croppedFile: File) => {
+        setCropImageSrc(null)
         setUploading(true)
 
         try {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('Not authenticated')
 
-            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+            const safeName = croppedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
             const fileName = `${Date.now()}_${safeName}`
             const filePath = `${user.id}/${fileName}`
 
             const { error: uploadErr } = await supabase.storage
                 .from('trip-images')
-                .upload(filePath, file, { upsert: false })
+                .upload(filePath, croppedFile, { upsert: false })
 
             if (uploadErr) throw uploadErr
 
@@ -147,11 +166,11 @@ export default function ImagePickerModal({
         } finally {
             setUploading(false)
         }
-    }, [])
+    }, [queryClient])
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
-        if (file) handleFileUpload(file)
+        if (file) handleFileSelect(file)
         e.target.value = ''
     }
 
@@ -159,7 +178,7 @@ export default function ImagePickerModal({
         e.preventDefault()
         setIsDragging(false)
         const file = e.dataTransfer.files?.[0]
-        if (file) handleFileUpload(file)
+        if (file) handleFileSelect(file)
     }
 
     const handleSelect = async (url: string) => {
@@ -237,7 +256,18 @@ export default function ImagePickerModal({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-            <div className="w-full max-w-2xl flex flex-col max-h-[90vh] rounded-3xl overflow-hidden shadow-[0_32px_80px_rgba(0,0,0,0.6)] border border-white/10 bg-[#0d1235]">
+            {cropImageSrc ? (
+                <div className="w-full max-w-4xl h-[80vh] flex flex-col">
+                    <ImageCropper
+                        imageSrc={cropImageSrc}
+                        aspect={imageType === 'cover' ? 21 / 9 : imageType === 'card' ? 4 / 3 : 16 / 9}
+                        fileName={originalFileName}
+                        onCropComplete={handleUploadCropped}
+                        onCancel={() => setCropImageSrc(null)}
+                    />
+                </div>
+            ) : (
+                <div className="w-full max-w-2xl flex flex-col max-h-[90vh] rounded-3xl overflow-hidden shadow-[0_32px_80px_rgba(0,0,0,0.6)] border border-white/10 bg-[#0d1235]">
 
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
@@ -248,7 +278,7 @@ export default function ImagePickerModal({
                         <div>
                             <h3 className="text-base font-bold text-white">Change {label}</h3>
                             <p className="text-xs text-slate-400">
-                                {imageType === 'card' ? 'Dashboard thumbnail' : 'Trip page banner'}
+                                {imageType === 'card' ? 'Dashboard thumbnail' : imageType === 'cover' ? 'Trip page banner' : 'Google Photos Portal backdrop'}
                             </p>
                         </div>
                     </div>
@@ -539,6 +569,7 @@ export default function ImagePickerModal({
                     )}
                 </div>
             </div>
+            )}
         </div>
     )
 }

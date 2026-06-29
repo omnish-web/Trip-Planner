@@ -63,14 +63,20 @@ const ExpensesTab = React.memo(({
     const totalCost = validExpenses.reduce((sum, e) => sum + e.amount, 0)
 
     // Your Share
-    const myParticipantId = participants.find(p => p.user_id === currentUserId)?.id
+    const myParticipant = participants.find(p => p.user_id === currentUserId)
+    const myParticipantId = myParticipant?.id
+    const myDependentIds = participants.filter(p => p.parent_id === myParticipantId).map(p => p.id)
+    const myEffectiveIds = [myParticipantId, ...myDependentIds].filter(Boolean)
+
     const mySpending = validExpenses.reduce((sum, e) => {
         const payers = e.expense_payers || []
         if (payers.length > 0) {
-            const participation = payers.find((p: any) => p.participant_id === myParticipantId)
-            return sum + (participation ? participation.amount : 0)
+            const participationSum = payers
+                .filter((p: any) => myEffectiveIds.includes(p.participant_id))
+                .reduce((acc: number, p: any) => acc + p.amount, 0)
+            return sum + participationSum
         }
-        return sum + (e.paid_by === myParticipantId ? e.amount : 0)
+        return sum + (myEffectiveIds.includes(e.paid_by) ? e.amount : 0)
     }, 0)
 
     // Category Data for Pie Chart

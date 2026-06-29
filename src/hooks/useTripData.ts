@@ -18,6 +18,8 @@ export interface Trip {
     status?: 'active' | 'ended'
     ended_at?: string | null
     notes?: string
+    google_photos_url?: string
+    google_photos_cover_url?: string
 }
 
 interface Expense {
@@ -54,6 +56,23 @@ export interface TripNoteAttachment {
     file_type: string
     file_size: number
     created_at: string
+}
+
+export interface TripNoteComment {
+    id: string
+    note_id: string
+    user_id: string
+    content: string
+    created_at: string
+}
+
+export interface UserProfile {
+    id: string
+    email: string
+    full_name: string
+    avatar_url: string
+    username_id?: string
+    passcode?: string
 }
 
 export interface TripNote {
@@ -613,5 +632,207 @@ export function useDeleteAttachment() {
             queryClient.invalidateQueries({ queryKey: ['allAttachments'] })
             queryClient.invalidateQueries({ queryKey: ['tripNotes', variables.tripId] })
         },
+    })
+}
+
+// --- User Profile Hook ---
+
+export function useUserProfile() {
+    return useQuery({
+        queryKey: ['userProfile'],
+        queryFn: async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) throw new Error('Not authenticated')
+
+            const { data: profile, error: profileErr } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', user.id)
+                .single()
+
+            if (profileErr) throw profileErr
+
+            const { data: secrets } = await supabase
+                .from('user_secrets')
+                .select('passcode')
+                .eq('user_id', user.id)
+                .single()
+
+            // It's okay if secrets don't exist yet (pre-migration)
+            return {
+                ...profile,
+                passcode: secrets?.passcode || null
+            } as UserProfile
+        }
+    })
+}
+
+// --- Invitations Hooks ---
+
+export interface TripInvitation {
+    id: string
+    trip_id: string
+    inviter_id: string
+    invitee_id: string
+    status: 'pending' | 'accepted' | 'rejected'
+    created_at: string
+    trip: { title: string }
+    inviter: { full_name: string, username_id: string }
+}
+
+export function useReceivedInvites() {
+    return useQuery({
+        queryKey: ['myInvites'],
+        queryFn: async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return []
+
+            const { data, error } = await supabase
+                .from('trip_invitations')
+                .select(`
+                    id, trip_id, inviter_id, invitee_id, status, created_at,
+                    trip:trips(title),
+                    inviter:profiles!trip_invitations_inviter_id_fkey(full_name, username_id)
+                `)
+                .eq('invitee_id', user.id)
+                // NULL-safe: include rows where invitee_deleted is false OR was never set
+                .or('invitee_deleted.is.null,invitee_deleted.eq.false')
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+            if (!data) return []
+            
+            return (data as any[]).map(d => ({
+                ...d,
+                trip: d.trip ? (Array.isArray(d.trip) ? d.trip[0] : d.trip) : { title: 'Unknown Trip' },
+                inviter: d.inviter ? (Array.isArray(d.inviter) ? d.inviter[0] : d.inviter) : { full_name: 'Someone', username_id: '?' }
+            })) as TripInvitation[]
+        }
+    })
+}
+
+export function useSentInvites() {
+    return useQuery({
+        queryKey: ['sentInvites'],
+        queryFn: async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return []
+
+            // Flat query — no embedded joins to avoid potential PostgREST
+            // 400 errors from trips RLS chain evaluation.
+            const { data, error } = await supabase
+                .from('trip_invitations')
+                .select('id, trip_id, inviter_id, invitee_id, status, created_at')
+                .eq('inviter_id', user.id)
+                // NULL-safe: include rows where inviter_deleted is false OR was never set
+                .or('inviter_deleted.is.null,inviter_deleted.eq.false')
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+            if (!data || data.length === 0) return []
+
+            // Fetch invitee profiles
+            const inviteeIds = data.map((d: any) => d.invitee_id)
+            const { data: profiles } = await supabase
+                .from('profiles')
+                .select('id, full_name, username_id')
+                .in('id', inviteeIds)
+
+            // Fetch trip titles separately
+            const tripIds = [...new Set(data.map((d: any) => d.trip_id as string))]
+            const { data: trips } = await supabase
+                .from('trips')
+                .select('id, title')
+                .in('id', tripIds)
+
+            return (data as any[]).map(d => {
+                const profile = profiles?.find(p => p.id === d.invitee_id)
+                const tripRecord = trips?.find(t => t.id === d.trip_id)
+                return {
+                    ...d,
+                    trip: tripRecord ? { title: tripRecord.title } : { title: 'Unknown Trip' },
+                    invitee: profile || { full_name: 'Unknown User', username_id: '?' }
+                }
+            })
+        }
+    })
+}
+
+// Fetch the current user's received invitation(s) for a specific trip
+export function useTripReceivedInvite(tripId: string | null) {
+    return useQuery({
+        queryKey: ['tripReceivedInvite', tripId],
+        queryFn: async () => {
+            if (!tripId) return []
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return []
+
+            const { data, error } = await supabase
+                .from('trip_invitations')
+                .select('id, trip_id, inviter_id, invitee_id, status, created_at')
+                .eq('trip_id', tripId)
+                .eq('invitee_id', user.id)
+                // NULL-safe filter
+                .or('invitee_deleted.is.null,invitee_deleted.eq.false')
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+            if (!data || data.length === 0) return []
+
+            const inviterIds = data.map(d => d.inviter_id)
+            const { data: profiles } = await supabase
+                .from('profiles')
+                .select('id, full_name, username_id')
+                .in('id', inviterIds)
+
+            return data.map(invite => {
+                const profile = profiles?.find(p => p.id === invite.inviter_id)
+                return {
+                    ...invite,
+                    inviter: profile || { full_name: 'Someone', username_id: '?' }
+                }
+            })
+        },
+        enabled: !!tripId
+    })
+}
+
+export function useTripInvites(tripId: string | null) {
+    return useQuery({
+        queryKey: ['tripInvites', tripId],
+        queryFn: async () => {
+            if (!tripId) return []
+
+            const { data: invites, error } = await supabase
+                .from('trip_invitations')
+                .select('*')
+                .eq('trip_id', tripId)
+                // NULL-safe filter
+                .or('inviter_deleted.is.null,inviter_deleted.eq.false')
+                .order('created_at', { ascending: false })
+
+            if (error) {
+                console.error("useTripInvites fetch error:", error)
+                throw error
+            }
+
+            if (!invites || invites.length === 0) return []
+
+            // Fetch invitee profiles separately to avoid any Foreign Key ambiguity issues
+            const inviteeIds = invites.map(i => i.invitee_id)
+            const { data: profiles } = await supabase
+                .from('profiles')
+                .select('id, full_name, username_id')
+                .in('id', inviteeIds)
+
+            return invites.map(invite => {
+                const profile = profiles?.find(p => p.id === invite.invitee_id)
+                return {
+                    ...invite,
+                    invitee: profile || { full_name: 'Unknown User', username_id: '?' }
+                }
+            })
+        },
+        enabled: !!tripId
     })
 }

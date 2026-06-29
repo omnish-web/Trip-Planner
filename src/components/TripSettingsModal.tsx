@@ -133,6 +133,7 @@ function GeneralSettings({ trip, updateTrip, isOwner, participants, balances = [
     const [currency, setCurrency] = useState(trip.currency)
     const [startDate, setStartDate] = useState(trip.start_date || '')
     const [endDate, setEndDate] = useState(trip.end_date || '')
+    const [googlePhotosUrl, setGooglePhotosUrl] = useState(trip.google_photos_url || '')
     const [loading, setLoading] = useState(false)
 
     // End Trip states
@@ -165,7 +166,8 @@ function GeneralSettings({ trip, updateTrip, isOwner, participants, balances = [
                     title,
                     currency,
                     start_date: startDate || null,
-                    end_date: endDate || null
+                    end_date: endDate || null,
+                    google_photos_url: googlePhotosUrl || null
                 }
             })
             toast.success('Settings saved')
@@ -274,6 +276,17 @@ function GeneralSettings({ trip, updateTrip, isOwner, participants, balances = [
                         <option value="GBP">GBP (£)</option>
                         <option value="JPY">JPY (¥)</option>
                     </select>
+                </div>
+                <div>
+                    <label className="compact-label">Google Photos Album URL (Optional)</label>
+                    <input
+                        type="url"
+                        value={googlePhotosUrl}
+                        onChange={e => setGooglePhotosUrl(e.target.value)}
+                        placeholder="https://photos.app.goo.gl/..."
+                        className="compact-input"
+                        disabled={isEnded}
+                    />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                     <div>

@@ -5,11 +5,14 @@ interface DashboardStatsProps {
     active: number
     upcoming: number
     past: number
+    filter: string
+    onFilterChange: (f: 'all' | 'active' | 'upcoming' | 'past') => void
 }
 
 const buildStats = (total: number, active: number, upcoming: number, past: number) => [
     {
         label: 'Total Trips',
+        filterKey: 'all' as const,
         value: total,
         icon: Plane,
         color: 'from-violet-500/20 to-violet-600/5',
@@ -23,6 +26,7 @@ const buildStats = (total: number, active: number, upcoming: number, past: numbe
     },
     {
         label: 'Active Now',
+        filterKey: 'active' as const,
         value: active,
         icon: Zap,
         color: 'from-fuchsia-500/20 to-fuchsia-600/5',
@@ -36,6 +40,7 @@ const buildStats = (total: number, active: number, upcoming: number, past: numbe
     },
     {
         label: 'Upcoming',
+        filterKey: 'upcoming' as const,
         value: upcoming,
         icon: Compass,
         color: 'from-indigo-500/20 to-indigo-600/5',
@@ -49,6 +54,7 @@ const buildStats = (total: number, active: number, upcoming: number, past: numbe
     },
     {
         label: 'Memories',
+        filterKey: 'past' as const,
         value: past,
         icon: Archive,
         color: 'from-slate-500/20 to-slate-600/5',
@@ -62,25 +68,28 @@ const buildStats = (total: number, active: number, upcoming: number, past: numbe
     },
 ]
 
-export default function DashboardStats({ total, active, upcoming, past }: DashboardStatsProps) {
+export default function DashboardStats({ total, active, upcoming, past, filter, onFilterChange }: DashboardStatsProps) {
     const items = buildStats(total, active, upcoming, past)
 
     return (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {items.map((stat) => {
                 const Icon = stat.icon
+                const isActive = filter === stat.filterKey
                 return (
-                    <div
+                    <button
                         key={stat.label}
+                        onClick={() => onFilterChange(stat.filterKey)}
                         className={`
-                            relative group rounded-2xl p-5
+                            relative group rounded-2xl p-5 text-left outline-none
                             bg-gradient-to-br ${stat.color}
                             bg-[#0a0f2c]/60 backdrop-blur-xl
-                            border ${stat.border}
+                            border ${isActive ? 'border-white/40 ring-2 ring-white/10' : stat.border}
                             ${stat.glow}
                             transition-all duration-300
                             animate-fade-in-up
                             overflow-hidden
+                            ${isActive ? 'shadow-[0_0_40px_rgba(255,255,255,0.1)] scale-[1.02]' : ''}
                         `}
                         style={{ animationDelay: stat.delay, animationFillMode: 'both' }}
                     >
@@ -105,9 +114,10 @@ export default function DashboardStats({ total, active, upcoming, past }: Dashbo
                         <div className="text-xs font-bold uppercase tracking-widest text-slate-500 group-hover:text-slate-400 transition-colors">
                             {stat.label}
                         </div>
-                    </div>
+                    </button>
                 )
             })}
         </div>
     )
 }
+
