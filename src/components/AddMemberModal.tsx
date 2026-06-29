@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, Loader2, Key, User, UserPlus, Users, Search, Mail, Trash2, Check, Send, Inbox, CheckCircle, AlertCircle } from 'lucide-react'
+import { X, Loader2, Key, User, UserPlus, Users, Search, Trash2, Check, Send, Inbox, CheckCircle, AlertCircle } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { useTripInvites, useTripReceivedInvite } from '../hooks/useTripData'
 import { useQueryClient } from '@tanstack/react-query'
