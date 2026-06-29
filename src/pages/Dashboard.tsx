@@ -47,7 +47,7 @@ export default function Dashboard() {
     const [searchQuery, setSearchQuery] = useState('')
 
     // Derived User display name
-    const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveler'
+    const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Traveller'
 
     // Date logic for derived categories
     const today = new Date()
@@ -268,11 +268,11 @@ export default function Dashboard() {
                             <div className="flex items-center gap-3 mb-4">
                                 <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 backdrop-blur-sm" title="Share this ID to receive trip invitations">
                                     <User className="w-3.5 h-3.5 text-slate-400" />
-                                    <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">User ID</span>
+                                    <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Traveller ID</span>
                                     <span className="text-sm font-mono font-bold text-fuchsia-300 ml-1">{userProfile.username_id}</span>
                                     <button onClick={() => {
                                         navigator.clipboard.writeText(userProfile.username_id || '')
-                                        toast.success('User ID copied to clipboard!')
+                                        toast.success('Traveller ID copied to clipboard!')
                                     }} className="ml-1 text-slate-500 hover:text-white transition-colors">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                     </button>

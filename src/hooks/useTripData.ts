@@ -169,7 +169,8 @@ export function useTripParticipants(tripId: string | undefined) {
                     profiles:user_id (
                         full_name,
                         email,
-                        id
+                        id,
+                        username_id
                     )
                 `)
                 .eq('trip_id', tripId)
@@ -837,7 +838,7 @@ export function useTripInvites(tripId: string | null) {
     })
 }
 
-// Fetch all unique users previously invited by the current user across any of their trips
+// Fetch all unique users previously invited by or who shared a trip with the current user
 export function usePastInvitees() {
     return useQuery({
         queryKey: ['pastInvitees'],
@@ -845,23 +846,48 @@ export function usePastInvitees() {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return []
 
-            // Fetch all invitations sent by this user
-            const { data: invites, error } = await supabase
+            // 1. Fetch all invitations sent by this user
+            const { data: invites } = await supabase
                 .from('trip_invitations')
                 .select('invitee_id')
                 .eq('inviter_id', user.id)
 
-            if (error) throw error
-            if (!invites || invites.length === 0) return []
+            // 2. Fetch all trip IDs the current user is/was a participant in
+            const { data: myTrips } = await supabase
+                .from('trip_participants')
+                .select('trip_id')
+                .eq('user_id', user.id)
 
-            // Extract unique invitee IDs
-            const uniqueInviteeIds = [...new Set(invites.map(i => i.invitee_id))]
+            let coParticipantIds: string[] = []
+            if (myTrips && myTrips.length > 0) {
+                const tripIds = myTrips.map(t => t.trip_id)
+                
+                // Fetch all other participants in those trips (excluding current user)
+                const { data: coParticipants } = await supabase
+                    .from('trip_participants')
+                    .select('user_id')
+                    .in('trip_id', tripIds)
+                    .neq('user_id', user.id)
 
-            // Fetch profiles for these unique invitees
+                if (coParticipants) {
+                    coParticipantIds = coParticipants
+                        .map(cp => cp.user_id)
+                        .filter((id): id is string => !!id) // filter out nulls (guests)
+                }
+            }
+
+            // Combine both sources
+            const inviteeIds = invites ? invites.map(i => i.invitee_id) : []
+            const combinedIds = [...new Set([...inviteeIds, ...coParticipantIds])]
+
+            if (combinedIds.length === 0) return []
+
+            // Fetch profiles for these unique users (only those with a valid username_id)
             const { data: profiles, error: profileError } = await supabase
                 .from('profiles')
                 .select('id, full_name, username_id')
-                .in('id', uniqueInviteeIds)
+                .in('id', combinedIds)
+                .not('username_id', 'is', null)
 
             if (profileError) throw profileError
             return profiles || []

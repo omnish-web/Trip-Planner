@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
-import { Plus, Trash2, Edit2, CheckSquare, Square, X, Calendar as CalendarIcon, AlertTriangle, Paperclip } from 'lucide-react'
+import { Plus, Trash2, Edit2, CheckSquare, Square, X, Calendar as CalendarIcon, AlertTriangle, Paperclip, Copy, Check } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
+import { toast } from 'react-hot-toast'
 
 
 interface ExpensesTabProps {
@@ -399,7 +400,7 @@ const ExpensesTab = React.memo(({
                                 return (
                                     <div key={parent.id} className="space-y-1">
                                         {/* Parent Member */}
-                                        <div className="flex items-center justify-between group gap-2">
+                                        <div className="flex items-center justify-between group gap-2 p-1.5 hover:bg-gray-50/50 dark:hover:bg-gray-800/20 rounded-xl transition-colors">
                                             <div className="flex items-center gap-2 min-w-0 flex-1">
                                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${parent.role === 'owner' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
                                                     {(parentName || 'G')[0]}
@@ -407,6 +408,20 @@ const ExpensesTab = React.memo(({
                                                 <span className="text-sm font-medium text-gray-800 dark:text-white whitespace-nowrap">
                                                     {parentName}
                                                 </span>
+                                                {parent.profiles?.username_id && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            navigator.clipboard.writeText(parent.profiles.username_id)
+                                                            toast.success(`Copied Traveller ID: ${parent.profiles.username_id}`)
+                                                        }}
+                                                        className="hidden group-hover:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-blue-900/30 border border-gray-200/60 dark:border-gray-700/50 text-[10px] font-mono text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 shrink-0 cursor-pointer"
+                                                        title="Click to copy Traveller ID"
+                                                    >
+                                                        <span>ID: {parent.profiles.username_id}</span>
+                                                        <Copy className="w-2.5 h-2.5" />
+                                                    </button>
+                                                )}
                                                 {isOwner && (
                                                     <button
                                                         onClick={() => onEditMember(parent)}
@@ -447,13 +462,27 @@ const ExpensesTab = React.memo(({
                                         {children.map(child => {
                                             const childName = child.profiles?.full_name || child.name || child.profiles?.email
                                             return (
-                                                <div key={child.id} className="ml-8 flex items-center justify-between py-1">
+                                                <div key={child.id} className="ml-8 flex items-center justify-between py-1.5 px-1.5 group/child hover:bg-gray-50/30 dark:hover:bg-gray-800/10 rounded-lg transition-colors">
                                                     <div className="flex items-center gap-2">
                                                         <div className="w-5 h-5 rounded-full bg-purple-100 flex items-center justify-center text-[10px] font-bold text-purple-700">
                                                             {(childName || 'D')[0]}
                                                         </div>
                                                         <p className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
                                                             {childName}
+                                                            {child.profiles?.username_id && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation()
+                                                                        navigator.clipboard.writeText(child.profiles.username_id)
+                                                                        toast.success(`Copied Traveller ID: ${child.profiles.username_id}`)
+                                                                    }}
+                                                                    className="hidden group-hover/child:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-blue-900/30 border border-gray-200/60 dark:border-gray-700/50 text-[9px] font-mono text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 shrink-0 cursor-pointer"
+                                                                    title="Click to copy Traveller ID"
+                                                                >
+                                                                    <span>ID: {child.profiles.username_id}</span>
+                                                                    <Copy className="w-2.5 h-2.5" />
+                                                                </button>
+                                                            )}
                                                             {isOwner && (
                                                                 <button
                                                                     onClick={() => onEditMember(child)}

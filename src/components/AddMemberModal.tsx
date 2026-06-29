@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, Loader2, Key, User, UserPlus, Users, Search, Trash2, Check, Send, Inbox, CheckCircle, AlertCircle } from 'lucide-react'
+import { X, Loader2, Key, User, UserPlus, Users, Search, Trash2, Check, Send, Inbox, CheckCircle, AlertCircle, Copy } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { useTripInvites, useTripReceivedInvite, usePastInvitees } from '../hooks/useTripData'
 import { useQueryClient } from '@tanstack/react-query'
@@ -106,7 +106,7 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                     .single()
 
                 if (profileError || !profile) {
-                    throw new Error('User not found. Please check the User-ID!')
+                    throw new Error('User not found. Please check the Traveller ID!')
                 }
 
                 // Check if user is already a member
@@ -323,7 +323,20 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                                                             {invite.status}
                                                         </span>
                                                     </div>
-                                                    <p className="text-xs text-gray-500 font-mono">ID: {invite.invitee?.username_id}</p>
+                                                    {invite.invitee?.username_id && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                navigator.clipboard.writeText(invite.invitee.username_id)
+                                                                toast.success(`Copied Traveller ID: ${invite.invitee.username_id}`)
+                                                            }}
+                                                            className="group/id mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-blue-900/30 border border-gray-200/60 dark:border-gray-700/50 text-[10px] font-mono text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all shrink-0"
+                                                            title="Click to copy Traveller ID"
+                                                        >
+                                                            <span>ID: {invite.invitee.username_id}</span>
+                                                            <Copy className="w-2.5 h-2.5 opacity-0 group-hover/id:opacity-100 transition-opacity" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                             <button
@@ -369,7 +382,21 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                                                             {invite.status}
                                                         </span>
                                                     </div>
-                                                    <p className="text-xs text-gray-500">{new Date(invite.created_at).toLocaleDateString()}</p>
+                                                    {invite.inviter?.username_id && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                navigator.clipboard.writeText(invite.inviter.username_id)
+                                                                toast.success(`Copied Traveller ID: ${invite.inviter.username_id}`)
+                                                            }}
+                                                            className="group/id mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-blue-900/30 border border-gray-200/60 dark:border-gray-700/50 text-[10px] font-mono text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all shrink-0"
+                                                            title="Click to copy Traveller ID"
+                                                        >
+                                                            <span>ID: {invite.inviter.username_id}</span>
+                                                            <Copy className="w-2.5 h-2.5 opacity-0 group-hover/id:opacity-100 transition-opacity" />
+                                                        </button>
+                                                    )}
+                                                    <p className="text-[10px] text-gray-400 mt-1">{new Date(invite.created_at).toLocaleDateString()}</p>
                                                 </div>
                                             </div>
                                             {invite.status === 'pending' ? (
@@ -416,7 +443,7 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                     <form onSubmit={handleSubmit} className="space-y-4">
                     {mode === 'invite' && (
                         <div>
-                            <label className="compact-label">User-ID</label>
+                            <label className="compact-label">Traveller ID</label>
                             <div className="relative">
                                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                                 <input
@@ -505,7 +532,7 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                     {mode === 'direct' && (
                         <>
                             <div>
-                                <label className="compact-label">User-ID</label>
+                                <label className="compact-label">Traveller ID</label>
                                 <div className="relative">
                                     <User className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                                     <input
