@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { X, Loader2, Key, User, UserPlus, Users, Search, Trash2, Check, Send, Inbox, CheckCircle, AlertCircle } from 'lucide-react'
 import { toast } from 'react-hot-toast'
-import { useTripInvites, useTripReceivedInvite } from '../hooks/useTripData'
+import { useTripInvites, useTripReceivedInvite, usePastInvitees } from '../hooks/useTripData'
 import { useQueryClient } from '@tanstack/react-query'
 
 interface Participant {
@@ -66,6 +66,8 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
     const { data: tripInvites = [], refetch: refetchInvites } = useTripInvites(tripId)
     // Fetch invitations received by current user for this specific trip
     const { data: receivedInvite = [], refetch: refetchReceived } = useTripReceivedInvite(tripId)
+    // Fetch past invitees for quick suggestions
+    const { data: pastInvitees = [] } = usePastInvitees()
 
     // Filter to show only parent members (those without a parent_id)
     const parentMembers = participants.filter(p => !p.parent_id)
@@ -154,6 +156,37 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
             console.error('Error adding member:', error)
             toast.error(error.message || 'Failed to add member')
             setMessage({ type: 'error', text: error.message || 'Failed to add member' })
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleQuickAction = async (targetUser: { id: string, username_id: string, full_name: string }) => {
+        setLoading(true)
+        setMessage(null)
+        try {
+            if (mode === 'invite') {
+                const { error: inviteError } = await supabase.rpc('send_trip_invitation', {
+                    p_trip_id: tripId,
+                    p_invitee_id: targetUser.id
+                })
+                if (inviteError) throw inviteError
+                toast.success(`Invitation sent to ${targetUser.full_name}!`)
+                queryClient.invalidateQueries({ queryKey: ['sentInvites'] })
+                queryClient.invalidateQueries({ queryKey: ['tripInvites', tripId] })
+                queryClient.invalidateQueries({ queryKey: ['myInvites'] })
+            } else if (mode === 'direct') {
+                // If direct adding, populate the username_id so they only need to enter the passcode
+                setUsernameId(targetUser.username_id)
+                toast.success(`Selected ${targetUser.full_name}. Please enter their passcode to add them.`)
+                setLoading(false)
+                return
+            }
+            onSuccess()
+            onClose()
+        } catch (error: any) {
+            console.error('Error in quick action:', error)
+            toast.error(error.message || 'Action failed')
         } finally {
             setLoading(false)
         }
@@ -437,6 +470,35 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                                     Send a notification to this user to join your trip. They must approve the invite.
                                 </p>
                             )}
+
+                            {/* ── Quick Suggestions ── */}
+                            {usernameId.trim() === '' && pastInvitees.length > 0 && (
+                                <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                    <label className="compact-label mb-2 flex items-center gap-1">
+                                        <Users className="w-3 h-3 text-blue-500" /> Quick Re-invite
+                                    </label>
+                                    <div className="space-y-1.5 max-h-[120px] overflow-y-auto pr-1 custom-scrollbar">
+                                        {pastInvitees
+                                            .filter((p: any) => !participants.some((curr: any) => curr.user_id === p.id))
+                                            .map((user: any) => (
+                                                <div key={user.id} className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-800 text-xs">
+                                                    <div className="min-w-0">
+                                                        <p className="font-semibold text-gray-800 dark:text-gray-200 truncate">{user.full_name}</p>
+                                                        <p className="text-[10px] text-gray-500 font-mono">ID: {user.username_id}</p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        disabled={loading}
+                                                        onClick={() => handleQuickAction(user)}
+                                                        className="px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 transition-colors"
+                                                    >
+                                                        Invite
+                                                    </button>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                     
@@ -490,6 +552,35 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                                     <p className="text-xs text-red-500 dark:text-red-400 flex items-center gap-1 mt-2">
                                         <AlertCircle className="w-3 h-3 shrink-0" /> No user found with this ID.
                                     </p>
+                                )}
+
+                                {/* ── Quick Suggestions ── */}
+                                {usernameId.trim() === '' && pastInvitees.length > 0 && (
+                                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                        <label className="compact-label mb-2 flex items-center gap-1">
+                                            <Users className="w-3 h-3 text-blue-500" /> Quick Add
+                                        </label>
+                                        <div className="space-y-1.5 max-h-[120px] overflow-y-auto pr-1 custom-scrollbar">
+                                            {pastInvitees
+                                                .filter((p: any) => !participants.some((curr: any) => curr.user_id === p.id))
+                                                .map((user: any) => (
+                                                    <div key={user.id} className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-800 text-xs">
+                                                        <div className="min-w-0">
+                                                            <p className="font-semibold text-gray-800 dark:text-gray-200 truncate">{user.full_name}</p>
+                                                            <p className="text-[10px] text-gray-500 font-mono">ID: {user.username_id}</p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            disabled={loading}
+                                                            onClick={() => handleQuickAction(user)}
+                                                            className="px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 transition-colors"
+                                                        >
+                                                            Select
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                             <div>

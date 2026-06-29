@@ -836,3 +836,36 @@ export function useTripInvites(tripId: string | null) {
         enabled: !!tripId
     })
 }
+
+// Fetch all unique users previously invited by the current user across any of their trips
+export function usePastInvitees() {
+    return useQuery({
+        queryKey: ['pastInvitees'],
+        queryFn: async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return []
+
+            // Fetch all invitations sent by this user
+            const { data: invites, error } = await supabase
+                .from('trip_invitations')
+                .select('invitee_id')
+                .eq('inviter_id', user.id)
+
+            if (error) throw error
+            if (!invites || invites.length === 0) return []
+
+            // Extract unique invitee IDs
+            const uniqueInviteeIds = [...new Set(invites.map(i => i.invitee_id))]
+
+            // Fetch profiles for these unique invitees
+            const { data: profiles, error: profileError } = await supabase
+                .from('profiles')
+                .select('id, full_name, username_id')
+                .in('id', uniqueInviteeIds)
+
+            if (profileError) throw profileError
+            return profiles || []
+        }
+    })
+}
+
