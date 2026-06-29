@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { X, Loader2, Key, User, UserPlus, Users, Search, Trash2, Check, Send, Inbox, CheckCircle, AlertCircle, Copy } from 'lucide-react'
 import { toast } from 'react-hot-toast'
-import { useTripInvites, useTripReceivedInvite, usePastInvitees } from '../hooks/useTripData'
+import { useTripInvites, useTripReceivedInvite, usePastInvitees, useJoinRequests, useRespondToJoinRequest } from '../hooks/useTripData'
 import { useQueryClient } from '@tanstack/react-query'
 
 interface Participant {
@@ -26,6 +26,16 @@ interface AddMemberModalProps {
 type Mode = 'invite' | 'direct' | 'guest' | 'manage'
 
 export default function AddMemberModal({ tripId, onClose, onSuccess, participants = [] }: AddMemberModalProps) {
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [onClose])
+
     const [loading, setLoading] = useState(false)
     const [mode, setMode] = useState<Mode>('invite')
     const [usernameId, setUsernameId] = useState('')
@@ -66,6 +76,9 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
     const { data: tripInvites = [], refetch: refetchInvites } = useTripInvites(tripId)
     // Fetch invitations received by current user for this specific trip
     const { data: receivedInvite = [], refetch: refetchReceived } = useTripReceivedInvite(tripId)
+    // Fetch pending join requests for this trip
+    const { data: joinRequests = [], refetch: refetchJoinRequests } = useJoinRequests(tripId)
+    const respondToJoinRequest = useRespondToJoinRequest()
     // Fetch past invitees for quick suggestions
     const { data: pastInvitees = [] } = usePastInvitees()
 
@@ -230,6 +243,20 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
         }
     }
 
+    const handleRespondToJoinRequest = async (requestId: string, approve: boolean) => {
+        try {
+            setLoading(true)
+            await respondToJoinRequest.mutateAsync({ requestId, approve })
+            toast.success(approve ? 'Request approved!' : 'Request rejected.')
+            refetchJoinRequests()
+            onSuccess()
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to respond to request')
+        } finally {
+            setLoading(false)
+        }
+    }
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="glass-panel w-full max-w-md p-6 bg-white dark:bg-gray-800 relative animate-fade-in">
@@ -279,12 +306,13 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                             setMode('manage')
                             refetchInvites()
                             refetchReceived()
+                            refetchJoinRequests()
                         }}
                     >
                         Manage Invites
-                        {(tripInvites.length + receivedInvite.length) > 0 && (
+                        {(tripInvites.length + receivedInvite.length + joinRequests.length) > 0 && (
                             <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold">
-                                {tripInvites.length + receivedInvite.length}
+                                {tripInvites.length + receivedInvite.length + joinRequests.length}
                             </span>
                         )}
                     </button>
@@ -437,6 +465,52 @@ export default function AddMemberModal({ tripId, onClose, onSuccess, participant
                                 </div>
                             )}
                         </div>
+
+                        {/* ── Join Requests ── */}
+                        {joinRequests.length > 0 && (
+                            <div>
+                                <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1.5">
+                                    <Users className="w-3 h-3" /> Join Requests
+                                </h3>
+                                <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1 custom-scrollbar">
+                                    {joinRequests.map((req: any) => (
+                                        <div key={req.id} className="flex items-center justify-between p-3 bg-fuchsia-500/5 dark:bg-fuchsia-500/5 rounded-lg border border-fuchsia-100 dark:border-fuchsia-900/20">
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400">
+                                                    {(req.requester?.full_name?.[0] || 'U').toUpperCase()}
+                                                </div>
+                                                <div className="truncate">
+                                                    <p className="font-medium text-sm text-gray-900 dark:text-white truncate">
+                                                        {req.requester?.full_name || 'Unknown User'}
+                                                    </p>
+                                                    {req.requester?.username_id && (
+                                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">ID: {req.requester.username_id}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-1 shrink-0">
+                                                <button
+                                                    onClick={() => handleRespondToJoinRequest(req.id, true)}
+                                                    disabled={loading}
+                                                    className="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors disabled:opacity-50"
+                                                    title="Approve Request"
+                                                >
+                                                    <Check className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleRespondToJoinRequest(req.id, false)}
+                                                    disabled={loading}
+                                                    className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors disabled:opacity-50"
+                                                    title="Reject Request"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                     </div>
                 ) : (

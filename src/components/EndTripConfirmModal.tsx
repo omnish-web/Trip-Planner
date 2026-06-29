@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, AlertTriangle, Mail } from 'lucide-react'
 
 interface EndTripConfirmModalProps {
@@ -10,6 +10,16 @@ interface EndTripConfirmModalProps {
 }
 
 export default function EndTripConfirmModal({ tripName, onClose, onConfirm, previousEndedAt, unsettledBalances = [] }: EndTripConfirmModalProps) {
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [onClose])
+
     const [sendEmail, setSendEmail] = useState(false)
     const [useOriginalDate, setUseOriginalDate] = useState(true)
 

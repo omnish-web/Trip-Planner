@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, Loader2, Save, Trash2, Plus, AlertTriangle, Settings, Check, Edit2, Power, RotateCcw, Images, FolderOpen } from 'lucide-react'
+import { X, Loader2, Save, Trash2, Plus, AlertTriangle, Settings, Check, Edit2, Power, RotateCcw, Images, FolderOpen, Copy } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import type { Trip } from '../hooks/useTripData'
-import { useUpdateTrip, useUpdateMemberRole } from '../hooks/useTripData'
+import { useUpdateTrip, useUpdateMemberRole, useRegenerateTripKey } from '../hooks/useTripData'
 import { useQueryClient } from '@tanstack/react-query'
 import ConfirmModal from './ConfirmModal'
 import ExpenseAdjustmentConfirmModal from './ExpenseAdjustmentConfirmModal'
@@ -23,6 +23,17 @@ interface TripSettingsModalProps {
 }
 
 export default function TripSettingsModal({ trip, participants, isOpen, onClose, currentUser, balances = [], onRequestEndTrip }: TripSettingsModalProps) {
+    useEffect(() => {
+        if (!isOpen) return
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, onClose])
+
     const [activeTab, setActiveTab] = useState<'general' | 'roles' | 'categories' | 'images' | 'files'>('general')
     const updateTripMutation = useUpdateTrip()
     const updateMemberRoleMutation = useUpdateMemberRole()
@@ -135,6 +146,23 @@ function GeneralSettings({ trip, updateTrip, isOwner, participants, balances = [
     const [endDate, setEndDate] = useState(trip.end_date || '')
     const [googlePhotosUrl, setGooglePhotosUrl] = useState(trip.google_photos_url || '')
     const [loading, setLoading] = useState(false)
+    const [loadingKey, setLoadingKey] = useState(false)
+    const regenerateKeyMutation = useRegenerateTripKey()
+
+    const handleRegenerateKey = async () => {
+        if (!window.confirm('Are you sure you want to regenerate the Trip Key? The old key will stop working immediately.')) {
+            return
+        }
+        setLoadingKey(true)
+        try {
+            await regenerateKeyMutation.mutateAsync({ tripId: trip.id })
+            toast.success('Trip Key regenerated successfully!')
+        } catch (err) {
+            toast.error('Failed to regenerate Trip Key')
+        } finally {
+            setLoadingKey(false)
+        }
+    }
 
     // End Trip states
     const [showEndTripModal, setShowEndTripModal] = useState(false)
@@ -310,6 +338,83 @@ function GeneralSettings({ trip, updateTrip, isOwner, participants, balances = [
                         />
                     </div>
                 </div>
+
+                {/* Trip ID & Trip Key Section */}
+                <div className="bg-gray-50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700/50 space-y-4">
+                    <h4 className="text-sm font-bold text-gray-800 dark:text-slate-200">Trip Join Settings</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="compact-label">Trip ID</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={trip.share_code ? trip.share_code.replace('TRIP-', '') : ''}
+                                    readOnly
+                                    className="compact-input bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 font-mono select-all"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        navigator.clipboard.writeText((trip.share_code || '').replace('TRIP-', ''))
+                                        toast.success('Trip ID copied!')
+                                    }}
+                                    className="px-3 bg-gray-100 dark:bg-gray-800 border border-gray-250 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg flex items-center justify-center transition-colors"
+                                    title="Copy Trip ID"
+                                >
+                                    <Copy className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="compact-label flex justify-between">
+                                <span>Trip Key</span>
+                                <span className="text-[10px] text-gray-500 font-normal lowercase">owners only</span>
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={isOwner ? (trip.trip_key ? trip.trip_key.replace('KEY-', '') : '') : '••••••'}
+                                    readOnly
+                                    className="compact-input bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 font-mono select-all"
+                                />
+                                {isOwner ? (
+                                  <>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText((trip.trip_key || '').replace('KEY-', ''))
+                                                toast.success('Trip Key copied!')
+                                            }}
+                                            className="px-3 bg-gray-100 dark:bg-gray-800 border border-gray-250 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg flex items-center justify-center transition-colors"
+                                            title="Copy Trip Key"
+                                        >
+                                            <Copy className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleRegenerateKey}
+                                            disabled={loadingKey || isEnded}
+                                            className="px-3 bg-gray-100 dark:bg-gray-800 border border-gray-250 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                                            title="Regenerate Trip Key"
+                                        >
+                                            {loadingKey ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <RotateCcw className="w-4 h-4" />
+                                            )}
+                                        </button>
+                                    </>
+                                ) : (
+                                    <div className="px-3 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 rounded-lg flex items-center justify-center cursor-not-allowed">
+                                        <Copy className="w-4 h-4 opacity-50" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="pt-4">
                     <button
                         type="submit"

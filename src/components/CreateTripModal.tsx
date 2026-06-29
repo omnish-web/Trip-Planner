@@ -11,6 +11,16 @@ interface CreateTripModalProps {
 }
 
 export default function CreateTripModal({ onClose, onSuccess, trip }: CreateTripModalProps) {
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [onClose])
+
     const [loading, setLoading] = useState(false)
     const [title, setTitle] = useState(trip?.title || '')
     const [destination, setDestination] = useState(trip?.destination || '')
@@ -52,6 +62,17 @@ export default function CreateTripModal({ onClose, onSuccess, trip }: CreateTrip
                 if (error) throw error
             } else {
                 // Create new trip
+                const generateRandomCode = (length: number) => {
+                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+                    let result = ''
+                    for (let i = 0; i < length; i++) {
+                        result += chars.charAt(Math.floor(Math.random() * chars.length))
+                    }
+                    return result
+                }
+                const shareCode = generateRandomCode(6)
+                const tripKey = generateRandomCode(6)
+
                 const { error } = await supabase
                     .from('trips')
                     .insert({
@@ -60,7 +81,9 @@ export default function CreateTripModal({ onClose, onSuccess, trip }: CreateTrip
                         destination: destination || null,
                         start_date: startDate ? startDate : null,
                         end_date: endDate ? endDate : null,
-                        currency
+                        currency,
+                        share_code: shareCode,
+                        trip_key: tripKey
                     })
 
                 if (error) throw error

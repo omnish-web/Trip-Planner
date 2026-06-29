@@ -20,6 +20,8 @@ export interface Trip {
     notes?: string
     google_photos_url?: string
     google_photos_cover_url?: string
+    share_code: string
+    trip_key: string
 }
 
 interface Expense {
@@ -73,6 +75,18 @@ export interface UserProfile {
     avatar_url: string
     username_id?: string
     passcode?: string
+}
+
+export interface TripJoinRequest {
+    id: string
+    trip_id: string
+    requester_id: string
+    status: 'pending' | 'approved' | 'rejected'
+    created_at: string
+    requester?: {
+        full_name: string
+        username_id: string
+    }
 }
 
 export interface TripNote {
@@ -142,7 +156,7 @@ export function useTrip(tripId: string | undefined) {
             if (!tripId) throw new Error('No trip ID')
             const { data, error } = await supabase
                 .from('trips')
-                .select('*')
+                .select('*, share_code, trip_key')
                 .eq('id', tripId)
                 .single()
             if (error) throw error
@@ -894,4 +908,214 @@ export function usePastInvitees() {
         }
     })
 }
+
+// Fetch all pending join requests for a specific trip (visible to trip owner)
+export function useJoinRequests(tripId: string | null) {
+    return useQuery({
+        queryKey: ['joinRequests', tripId],
+        queryFn: async () => {
+            if (!tripId) return []
+            const { data, error } = await supabase
+                .from('trip_join_requests')
+                .select(`
+                    id,
+                    trip_id,
+                    requester_id,
+                    status,
+                    created_at,
+                    requester:profiles!trip_join_requests_requester_id_fkey(
+                        full_name,
+                        username_id
+                    )
+                `)
+                .eq('trip_id', tripId)
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+            return (data as any[]).map(r => ({
+                ...r,
+                requester: Array.isArray(r.requester) ? r.requester[0] : r.requester
+            }))
+        },
+        enabled: !!tripId
+    })
+}
+
+// Fetch all pending join requests sent by the current user
+export function useMyPendingRequests() {
+    return useQuery({
+        queryKey: ['myPendingRequests'],
+        queryFn: async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return []
+
+            const { data, error } = await supabase
+                .from('trip_join_requests')
+                .select(`
+                    id,
+                    trip_id,
+                    status,
+                    created_at,
+                    trip:trips(title)
+                `)
+                .eq('requester_id', user.id)
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+            return (data as any[]).map(r => ({
+                ...r,
+                trip: Array.isArray(r.trip) ? r.trip[0] : r.trip
+            }))
+        }
+    })
+}
+
+export function useJoinTripInstantly() {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async ({ shareCode, tripKey }: { shareCode: string; tripKey: string }) => {
+            const { data, error } = await supabase.rpc('join_trip_instantly', {
+                p_share_code: shareCode,
+                p_trip_key: tripKey
+            })
+            if (error) throw error
+            return data as { success: boolean; already_member: boolean; trip_id: string }
+        },
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ['trips'] })
+            queryClient.invalidateQueries({ queryKey: ['trip', data.trip_id] })
+            queryClient.invalidateQueries({ queryKey: ['myPendingRequests'] })
+        }
+    })
+}
+
+export function useRequestTripJoin() {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async ({ shareCode }: { shareCode: string }) => {
+            const { data, error } = await supabase.rpc('request_trip_join', {
+                p_share_code: shareCode
+            })
+            if (error) throw error
+            return data as { success: boolean; already_member: boolean; trip_id: string }
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['myPendingRequests'] })
+        }
+    })
+}
+
+export function useRespondToJoinRequest() {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async ({ requestId, approve }: { requestId: string; approve: boolean }) => {
+            const { data, error } = await supabase.rpc('respond_to_join_request', {
+                p_request_id: requestId,
+                p_approve: approve
+            })
+            if (error) throw error
+            return data
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['joinRequests'] })
+            queryClient.invalidateQueries({ queryKey: ['allIncomingJoinRequests'] })
+            queryClient.invalidateQueries({ queryKey: ['participants'] })
+            queryClient.invalidateQueries({ queryKey: ['trips'] })
+        }
+    })
+}
+
+export function useRegenerateTripKey() {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async ({ tripId }: { tripId: string }) => {
+            const generateRandomCode = (length: number) => {
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+                let result = ''
+                for (let i = 0; i < length; i++) {
+                    result += chars.charAt(Math.floor(Math.random() * chars.length))
+                }
+                return result
+            }
+            const newKey = generateRandomCode(6)
+            const { error } = await supabase
+                .from('trips')
+                .update({ trip_key: newKey })
+                .eq('id', tripId)
+
+            if (error) throw error
+            return newKey
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['trip', variables.tripId] })
+            queryClient.invalidateQueries({ queryKey: ['trips'] })
+        }
+    })
+}
+
+export function useAllIncomingJoinRequests() {
+    return useQuery({
+        queryKey: ['allIncomingJoinRequests'],
+        queryFn: async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return []
+
+            // First, get all trip IDs where the user is owner
+            const { data: ownedTrips } = await supabase
+                .from('trip_participants')
+                .select('trip_id')
+                .eq('user_id', user.id)
+                .eq('role', 'owner')
+
+            if (!ownedTrips || ownedTrips.length === 0) return []
+            const tripIds = ownedTrips.map(t => t.trip_id)
+
+            // Fetch pending join requests for these trips
+            const { data, error } = await supabase
+                .from('trip_join_requests')
+                .select(`
+                    id,
+                    trip_id,
+                    requester_id,
+                    status,
+                    created_at,
+                    trip:trips(title),
+                    requester:profiles!trip_join_requests_requester_id_fkey(
+                        full_name,
+                        username_id
+                    )
+                `)
+                .in('trip_id', tripIds)
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+            return (data as any[]).map(r => ({
+                ...r,
+                trip: Array.isArray(r.trip) ? r.trip[0] : r.trip,
+                requester: Array.isArray(r.requester) ? r.requester[0] : r.requester
+            }))
+        }
+    })
+}
+
+export function useLeaveTrip() {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async ({ tripId }: { tripId: string }) => {
+            const { data, error } = await supabase.rpc('leave_trip', {
+                p_trip_id: tripId
+            })
+            if (error) throw error
+            return data
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['trips'] })
+        }
+    })
+}
+
+
+
 

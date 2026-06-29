@@ -127,6 +127,16 @@ export default function FileManagerModal({
     singleTripTitle,
     embedded = false,
 }: FileManagerModalProps) {
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [onClose])
+
     const navigate = useNavigate()
 
     // ── Data ──

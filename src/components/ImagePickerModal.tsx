@@ -50,6 +50,16 @@ export default function ImagePickerModal({
     currentUrl,
     imageType,
 }: ImagePickerModalProps) {
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [onClose])
+
     const queryClient = useQueryClient()
 
     const [activeTab, setActiveTab] = useState<Tab>('library')

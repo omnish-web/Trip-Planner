@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Mail, Check, Trash2, Send, Inbox } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { useQueryClient } from '@tanstack/react-query'
-import { useReceivedInvites, useSentInvites } from '../hooks/useTripData'
+import { useReceivedInvites, useSentInvites, useAllIncomingJoinRequests, useMyPendingRequests, useRespondToJoinRequest } from '../hooks/useTripData'
 
 interface InvitationsHubModalProps {
     isOpen: boolean
@@ -13,9 +13,23 @@ interface InvitationsHubModalProps {
 export default function InvitationsHubModal({ isOpen, onClose }: InvitationsHubModalProps) {
     const [activeTab, setActiveTab] = useState<'received' | 'sent'>('received')
     const queryClient = useQueryClient()
+
+    useEffect(() => {
+        if (!isOpen) return
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, onClose])
     
     const { data: receivedInvites = [], refetch: refetchReceived } = useReceivedInvites()
     const { data: sentInvites = [], refetch: refetchSent } = useSentInvites()
+    const { data: incomingJoinRequests = [], refetch: refetchIncomingJoin } = useAllIncomingJoinRequests()
+    const { data: myPendingRequests = [], refetch: refetchMyPending } = useMyPendingRequests()
+    const respondToJoinRequest = useRespondToJoinRequest()
 
     if (!isOpen) return null
 
@@ -99,9 +113,9 @@ export default function InvitationsHubModal({ isOpen, onClose }: InvitationsHubM
                         }`}
                     >
                         <Inbox className="w-4 h-4" /> Received Invites
-                        {receivedInvites.filter(i => i.status === 'pending').length > 0 && (
+                        {(receivedInvites.filter(i => i.status === 'pending').length + incomingJoinRequests.length) > 0 && (
                             <span className="bg-fuchsia-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                                {receivedInvites.filter(i => i.status === 'pending').length}
+                                {receivedInvites.filter(i => i.status === 'pending').length + incomingJoinRequests.length}
                             </span>
                         )}
                         {activeTab === 'received' && (
@@ -115,6 +129,11 @@ export default function InvitationsHubModal({ isOpen, onClose }: InvitationsHubM
                         }`}
                     >
                         <Send className="w-4 h-4" /> Sent Invites
+                        {myPendingRequests.filter(req => req.status === 'pending').length > 0 && (
+                            <span className="bg-indigo-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                {myPendingRequests.filter(req => req.status === 'pending').length}
+                            </span>
+                        )}
                         {activeTab === 'sent' && (
                             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-fuchsia-500 to-indigo-500 rounded-t-full shadow-[0_-2px_10px_rgba(217,70,239,0.5)]" />
                         )}
@@ -125,71 +144,184 @@ export default function InvitationsHubModal({ isOpen, onClose }: InvitationsHubM
                 <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
                     {activeTab === 'received' && (
                         <div className="space-y-3">
-                            {receivedInvites.length === 0 ? (
+                            {receivedInvites.length === 0 && incomingJoinRequests.length === 0 ? (
                                 <div className="text-center py-12">
                                     <Inbox className="w-12 h-12 text-slate-600 mx-auto mb-4" />
                                     <p className="text-slate-400 font-medium">Your inbox is empty.</p>
                                 </div>
                             ) : (
-                                receivedInvites.map(invite => (
-                                    <div key={invite.id} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition-colors">
-                                        <div className="flex flex-col">
-                                            <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
-                                                <span className="text-sm text-slate-300">
-                                                    <strong className="text-white">{invite.inviter?.full_name || 'Someone'}</strong> invited you to
-                                                </span>
-                                                <span className="text-lg font-black text-white">{invite.trip?.title || 'a trip'}</span>
-                                                {renderBadge(invite.status)}
+                                <>
+                                    {receivedInvites.map(invite => (
+                                        <div key={invite.id} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition-colors">
+                                            <div className="flex flex-col">
+                                                <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
+                                                    <span className="text-sm text-slate-300">
+                                                        <strong className="text-white">{invite.inviter?.full_name || 'Someone'}</strong> invited you to
+                                                    </span>
+                                                    <span className="text-lg font-black text-white">{invite.trip?.title || 'a trip'}</span>
+                                                    {renderBadge(invite.status)}
+                                                </div>
+                                                <p className="text-xs text-slate-500 mt-1">{new Date(invite.created_at).toLocaleDateString()}</p>
                                             </div>
-                                            <p className="text-xs text-slate-500 mt-1">{new Date(invite.created_at).toLocaleDateString()}</p>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            {invite.status === 'pending' ? (
-                                                <>
-                                                    <button onClick={() => handleRespondToInvite(invite.id, 'accepted')} className="w-10 h-10 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 flex items-center justify-center transition-colors" title="Accept Invite">
-                                                        <Check className="w-5 h-5" />
+                                            <div className="flex gap-2">
+                                                {invite.status === 'pending' ? (
+                                                    <>
+                                                        <button onClick={() => handleRespondToInvite(invite.id, 'accepted')} className="w-10 h-10 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 flex items-center justify-center transition-colors" title="Accept Invite">
+                                                            <Check className="w-5 h-5" />
+                                                        </button>
+                                                        <button onClick={() => handleRespondToInvite(invite.id, 'rejected')} className="w-10 h-10 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 flex items-center justify-center transition-colors" title="Reject Invite">
+                                                            <X className="w-5 h-5" />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <button onClick={() => handleDeleteReceived(invite.id)} className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-colors" title="Delete record">
+                                                        <Trash2 className="w-4 h-4" />
                                                     </button>
-                                                    <button onClick={() => handleRespondToInvite(invite.id, 'rejected')} className="w-10 h-10 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 flex items-center justify-center transition-colors" title="Reject Invite">
-                                                        <X className="w-5 h-5" />
-                                                    </button>
-                                                </>
-                                            ) : (
-                                                <button onClick={() => handleDeleteReceived(invite.id)} className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-colors" title="Delete record">
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))
+                                    ))}
+
+                                    {/* Incoming Join Requests */}
+                                    {incomingJoinRequests.length > 0 && (
+                                        <div className="mt-6 pt-6 border-t border-white/10">
+                                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                                                <span className="w-2 h-2 rounded-full bg-fuchsia-500 animate-pulse" />
+                                                Join Requests for Your Trips
+                                            </h3>
+                                            <div className="space-y-3">
+                                                {incomingJoinRequests.map(req => (
+                                                    <div key={req.id} className="flex items-center justify-between p-4 rounded-xl bg-fuchsia-500/5 border border-fuchsia-500/10 hover:border-fuchsia-500/20 transition-colors">
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
+                                                                <span className="text-sm text-slate-300">
+                                                                    <strong className="text-white">{req.requester?.full_name || 'Someone'}</strong> (ID: {req.requester?.username_id || '?'}) requested to join
+                                                                </span>
+                                                                <span className="text-lg font-black text-white">{req.trip?.title || 'your trip'}</span>
+                                                            </div>
+                                                            <p className="text-xs text-slate-500 mt-1">{new Date(req.created_at).toLocaleDateString()}</p>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        await respondToJoinRequest.mutateAsync({ requestId: req.id, approve: true })
+                                                                        toast.success('Request approved!')
+                                                                        refetchIncomingJoin()
+                                                                    } catch (err: any) {
+                                                                        toast.error(err.message || 'Failed to approve request')
+                                                                    }
+                                                                }}
+                                                                className="w-10 h-10 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 flex items-center justify-center transition-colors"
+                                                                title="Approve"
+                                                            >
+                                                                <Check className="w-5 h-5" />
+                                                            </button>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        await respondToJoinRequest.mutateAsync({ requestId: req.id, approve: false })
+                                                                        toast.success('Request rejected.')
+                                                                        refetchIncomingJoin()
+                                                                    } catch (err: any) {
+                                                                        toast.error(err.message || 'Failed to reject request')
+                                                                    }
+                                                                }}
+                                                                className="w-10 h-10 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 flex items-center justify-center transition-colors"
+                                                                title="Reject"
+                                                            >
+                                                                <X className="w-5 h-5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     )}
 
                     {activeTab === 'sent' && (
                         <div className="space-y-3">
-                            {sentInvites.length === 0 ? (
+                            {sentInvites.length === 0 && myPendingRequests.length === 0 ? (
                                 <div className="text-center py-12">
                                     <Send className="w-12 h-12 text-slate-600 mx-auto mb-4" />
                                     <p className="text-slate-400 font-medium">You haven't sent any invitations recently.</p>
                                 </div>
                             ) : (
-                                sentInvites.map(invite => (
-                                    <div key={invite.id} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition-colors">
-                                        <div className="flex flex-col">
-                                            <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
-                                                <span className="text-sm text-slate-300">
-                                                    You invited <strong className="text-white">{invite.invitee?.full_name || 'User'}</strong> ({invite.invitee?.username_id}) to
-                                                </span>
-                                                <span className="text-lg font-black text-white">{invite.trip?.title || 'a trip'}</span>
-                                                {renderBadge(invite.status)}
+                                <>
+                                    {sentInvites.map(invite => (
+                                        <div key={invite.id} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition-colors">
+                                            <div className="flex flex-col">
+                                                <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
+                                                    <span className="text-sm text-slate-300">
+                                                        You invited <strong className="text-white">{invite.invitee?.full_name || 'User'}</strong> ({invite.invitee?.username_id}) to
+                                                    </span>
+                                                    <span className="text-lg font-black text-white">{invite.trip?.title || 'a trip'}</span>
+                                                    {renderBadge(invite.status)}
+                                                </div>
+                                                <p className="text-xs text-slate-500 mt-1">{new Date(invite.created_at).toLocaleDateString()}</p>
                                             </div>
-                                            <p className="text-xs text-slate-500 mt-1">{new Date(invite.created_at).toLocaleDateString()}</p>
+                                            <button onClick={() => handleRevokeSent(invite.id)} className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-colors" title="Revoke / Delete">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
                                         </div>
-                                        <button onClick={() => handleRevokeSent(invite.id)} className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-colors" title="Revoke / Delete">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                ))
+                                    ))}
+
+                                    {/* Sent Join Requests */}
+                                    {myPendingRequests.length > 0 && (
+                                        <div className="mt-6 pt-6 border-t border-white/10">
+                                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                                                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                                                Your Sent Join Requests
+                                            </h3>
+                                            <div className="space-y-3">
+                                                {myPendingRequests.map(req => (
+                                                    <div key={req.id} className={`flex items-center justify-between p-4 rounded-xl transition-colors ${
+                                                        req.status === 'approved' ? 'bg-emerald-500/5 border border-emerald-500/10 hover:border-emerald-500/25' :
+                                                        req.status === 'rejected' ? 'bg-rose-500/5 border border-rose-500/10 hover:border-rose-500/25' :
+                                                        'bg-indigo-500/5 border border-indigo-500/10 hover:border-indigo-500/20'
+                                                    }`}>
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
+                                                                <span className="text-sm text-slate-300">
+                                                                    You requested to join trip
+                                                                </span>
+                                                                <span className="text-lg font-black text-white">{req.trip?.title || 'a trip'}</span>
+                                                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                                                    req.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
+                                                                    req.status === 'rejected' ? 'bg-rose-500/20 text-rose-400' :
+                                                                    'bg-amber-500/20 text-amber-400 animate-pulse'
+                                                                }`}>
+                                                                    {req.status}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-slate-500 mt-1">{new Date(req.created_at).toLocaleDateString()}</p>
+                                                        </div>
+                                                        <button
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const { error } = await supabase.from('trip_join_requests').delete().eq('id', req.id)
+                                                                    if (error) throw error
+                                                                    toast.success(req.status === 'pending' ? 'Join request cancelled.' : 'Notification cleared.')
+                                                                    refetchMyPending()
+                                                                } catch (err: any) {
+                                                                    toast.error(err.message || 'Failed to update request')
+                                                                }
+                                                            }}
+                                                            className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-colors"
+                                                            title={req.status === 'pending' ? 'Cancel Request' : 'Clear Notification'}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     )}

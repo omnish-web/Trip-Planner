@@ -1,10 +1,13 @@
 import React, { useMemo, useState } from 'react'
-import { Plus, Trash2, Edit2, CheckSquare, Square, X, Calendar as CalendarIcon, AlertTriangle, Paperclip, Copy, Check } from 'lucide-react'
+import { Plus, Trash2, Edit2, CheckSquare, Square, X, Calendar as CalendarIcon, AlertTriangle, Paperclip, Copy, UserMinus } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { toast } from 'react-hot-toast'
+import { useLeaveTrip } from '../hooks/useTripData'
+import ConfirmModal from './ConfirmModal'
 
 
 interface ExpensesTabProps {
+    tripId: string
     expenses: any[]
     participants: any[]
     currency: string
@@ -32,6 +35,7 @@ interface ExpensesTabProps {
 
 
 const ExpensesTab = React.memo(({
+    tripId,
     expenses,
     participants,
     currency,
@@ -57,6 +61,22 @@ const ExpensesTab = React.memo(({
 }: ExpensesTabProps) => {
 
     const [selectedCategory, setSelectedCategory] = useState<string>('All')
+    const [showLeaveConfirmModal, setShowLeaveConfirmModal] = useState(false)
+    const leaveTripMutation = useLeaveTrip()
+
+    const handleLeaveTrip = async () => {
+        setShowLeaveConfirmModal(false)
+        try {
+            toast.loading('Leaving trip...')
+            await leaveTripMutation.mutateAsync({ tripId })
+            toast.dismiss()
+            toast.success('Successfully left the trip.')
+            window.location.href = '/' // Redirect to dashboard
+        } catch (err: any) {
+            toast.dismiss()
+            toast.error(err.message || 'Failed to leave trip.')
+        }
+    }
 
     // 1. Calculate Stats
     // 1. Calculate Stats (Exclude Settlements)
@@ -445,7 +465,7 @@ const ExpensesTab = React.memo(({
                                                     {currency} {parentTotalSpent.toFixed(0)}
                                                 </div>
 
-                                                {isOwner && (
+                                                {isOwner && parent.role !== 'owner' && (
                                                     <button
                                                         onClick={() => onRemoveMember(parent.id, parentName)}
                                                         disabled={!canEdit || Math.abs(parentBalance) > 0.01}
@@ -453,6 +473,17 @@ const ExpensesTab = React.memo(({
                                                         title={!canEdit ? 'Trip is ended' : Math.abs(parentBalance) > 0.01 ? `Cannot remove (Balance: ${parentBalance.toFixed(2)})` : "Remove Member"}
                                                     >
                                                         <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+
+                                                {!isOwner && parent.user_id === currentUserId && (
+                                                    <button
+                                                        onClick={() => setShowLeaveConfirmModal(true)}
+                                                        disabled={isEnded}
+                                                        className="p-1.5 rounded-full text-rose-500 hover:bg-rose-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                                        title={isEnded ? 'Trip has ended' : 'Leave Trip'}
+                                                    >
+                                                        <UserMinus className="w-3.5 h-3.5" />
                                                     </button>
                                                 )}
                                             </div>
@@ -611,6 +642,15 @@ const ExpensesTab = React.memo(({
                     </div>
                 )
             }
+            <ConfirmModal
+                isOpen={showLeaveConfirmModal}
+                onClose={() => setShowLeaveConfirmModal(false)}
+                onConfirm={handleLeaveTrip}
+                title="Leave Trip"
+                message="Are you sure you want to leave this trip? You will lose access to all itinerary details, expenses, and files. This action cannot be undone."
+                confirmText="Leave Trip"
+                variant="danger"
+            />
         </div >
     )
 })

@@ -3,19 +3,20 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
     Plus, Calendar, MapPin, LogOut, Trash2, User, Edit2,
-    Images, FolderOpen, Search, X, Sparkles, TrendingUp, Check, Mail,
+    Images, FolderOpen, Search, X, Sparkles, TrendingUp, Check, Mail, UserPlus
 } from 'lucide-react'
 import { format, formatDistanceToNow, differenceInDays } from 'date-fns'
 import { toast } from 'react-hot-toast'
 import DeleteConfirmModal from '../components/DeleteConfirmModal'
 import EditProfileModal from '../components/EditProfileModal'
-import { useTrips, type Trip, useCurrentUser, useUserProfile, useReceivedInvites } from '../hooks/useTripData'
+import { useTrips, type Trip, useCurrentUser, useUserProfile, useReceivedInvites, useAllIncomingJoinRequests, useMyPendingRequests, useRespondToJoinRequest } from '../hooks/useTripData'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTheme } from '../hooks/useTheme'
 import TripTimeline from '../components/TripTimeline'
 import InvitationsHubModal from '../components/InvitationsHubModal'
 import CosmicMap from '../components/CosmicMap'
 import CreateTripModal from '../components/CreateTripModal'
+import JoinTripModal from '../components/JoinTripModal'
 import ImageManagerModal from '../components/ImageManagerModal'
 import FileManagerModal from '../components/FileManagerModal'
 import { getPresetForTrip } from '../components/ImagePickerModal'
@@ -31,10 +32,14 @@ export default function Dashboard() {
     const { data: userProfile } = useUserProfile()
     const { data: trips = [] } = useTrips(user?.id || null)
     const { data: receivedInvites = [], refetch: refetchInvites } = useReceivedInvites()
+    const { data: incomingJoinRequests = [], refetch: refetchIncomingJoin } = useAllIncomingJoinRequests()
+    const { data: myPendingRequests = [], refetch: refetchMyPending } = useMyPendingRequests()
+    const respondToJoinRequest = useRespondToJoinRequest()
 
     const { isDark } = useTheme()
 
     const [showCreateModal, setShowCreateModal] = useState(false)
+    const [showJoinModal, setShowJoinModal] = useState(false)
     const [showInvitesHub, setShowInvitesHub] = useState(false)
     const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
     const [showProfileModal, setShowProfileModal] = useState(false)
@@ -230,7 +235,7 @@ export default function Dashboard() {
                     </div>
                     <button onClick={() => setShowInvitesHub(true)} className="relative hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 text-slate-300 transition-all outline-none focus:ring-2 focus:ring-fuchsia-500/50" title="Invitations Hub">
                         <Mail className="w-5 h-5" />
-                        {receivedInvites.some(i => i.status === 'pending') && (
+                        {(receivedInvites.some(i => i.status === 'pending') || incomingJoinRequests.length > 0 || myPendingRequests.length > 0) && (
                             <span className="absolute -top-1 -right-1 w-3 h-3 bg-fuchsia-500 rounded-full border-2 border-[#060a1f]"></span>
                         )}
                     </button>
@@ -288,8 +293,8 @@ export default function Dashboard() {
                             </div>
                         )}
 
-                        {/* Recent Invites Feed */}
-                        {recentInvites.length > 0 && (
+                        {/* Recent Invites & Join Requests Feed */}
+                        {(recentInvites.length > 0 || incomingJoinRequests.length > 0 || myPendingRequests.length > 0) && (
                             <div className="flex flex-col gap-3 mb-6">
                                 {recentInvites.map(invite => (
                                     <div key={invite.id} className={`flex items-center justify-between border rounded-xl p-4 shadow-lg backdrop-blur-md transition-all ${invite.status === 'pending' ? 'bg-fuchsia-900/20 border-fuchsia-500/30' :
@@ -328,6 +333,99 @@ export default function Dashboard() {
                                         </div>
                                     </div>
                                 ))}
+
+                                {incomingJoinRequests.map(req => (
+                                    <div key={req.id} className="flex items-center justify-between border rounded-xl p-4 shadow-lg backdrop-blur-md transition-all bg-fuchsia-950/20 border-fuchsia-500/30">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-sm font-medium text-fuchsia-200">
+                                                <strong className="text-white">{req.requester?.full_name || 'Someone'}</strong> (ID: {req.requester?.username_id || '?'}) requested to join
+                                            </span>
+                                            <span className="text-lg font-black text-white">
+                                                {req.trip?.title || 'your trip'}
+                                            </span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-fuchsia-500/25 text-fuchsia-400">
+                                                REQUEST
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        await respondToJoinRequest.mutateAsync({ requestId: req.id, approve: true })
+                                                        toast.success('Request approved!')
+                                                        refetchIncomingJoin()
+                                                    } catch (err: any) {
+                                                        toast.error(err.message || 'Failed to approve request')
+                                                    }
+                                                }}
+                                                className="w-10 h-10 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 flex items-center justify-center transition-colors"
+                                                title="Approve Request"
+                                            >
+                                                <Check className="w-5 h-5" />
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        await respondToJoinRequest.mutateAsync({ requestId: req.id, approve: false })
+                                                        toast.success('Request rejected.')
+                                                        refetchIncomingJoin()
+                                                    } catch (err: any) {
+                                                        toast.error(err.message || 'Failed to reject request')
+                                                    }
+                                                }}
+                                                className="w-10 h-10 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 flex items-center justify-center transition-colors"
+                                                title="Reject Request"
+                                            >
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {myPendingRequests.map(req => (
+                                    <div key={req.id} className={`flex items-center justify-between border rounded-xl p-4 shadow-lg backdrop-blur-md transition-all ${
+                                        req.status === 'approved' ? 'bg-emerald-950/20 border-emerald-500/30' :
+                                        req.status === 'rejected' ? 'bg-rose-950/20 border-rose-500/30' :
+                                        'bg-indigo-950/20 border-indigo-500/30'
+                                    }`}>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-sm font-medium text-slate-200">
+                                                {req.status === 'approved' ? (
+                                                    <span>Your request to join <strong className="text-white">{req.trip?.title || 'a trip'}</strong> has been approved!</span>
+                                                ) : req.status === 'rejected' ? (
+                                                    <span>Your request to join <strong className="text-white">{req.trip?.title || 'a trip'}</strong> was rejected.</span>
+                                                ) : (
+                                                    <span>Your request to join <strong className="text-white">{req.trip?.title || 'a trip'}</strong> is pending</span>
+                                                )}
+                                            </span>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                                req.status === 'approved' ? 'bg-emerald-500/25 text-emerald-400' :
+                                                req.status === 'rejected' ? 'bg-rose-500/25 text-rose-400' :
+                                                'bg-amber-500/25 text-amber-400 animate-pulse'
+                                            }`}>
+                                                {req.status}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const { error } = await supabase.from('trip_join_requests').delete().eq('id', req.id)
+                                                        if (error) throw error
+                                                        toast.success(req.status === 'pending' ? 'Join request cancelled.' : 'Notification cleared.')
+                                                        refetchMyPending()
+                                                    } catch (err: any) {
+                                                        toast.error(err.message || 'Failed to update request')
+                                                    }
+                                                }}
+                                                className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-colors"
+                                                title={req.status === 'pending' ? 'Cancel Request' : 'Clear Notification'}
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         )}
 
@@ -338,7 +436,15 @@ export default function Dashboard() {
                             }
                         </p>
                     </div>
-                    <div className="shrink-0">
+                    <div className="shrink-0 flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                        <button
+                            id="join-trip-btn"
+                            onClick={() => setShowJoinModal(true)}
+                            className="group relative bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 sm:px-10 sm:py-5 rounded-2xl font-black text-base tracking-wide flex items-center justify-center gap-3 overflow-hidden transition-all duration-300 border border-white/10 hover:border-white/20 shadow-lg transform hover:-translate-y-1 active:scale-95 w-full sm:w-auto outline-none focus:ring-4 focus:ring-indigo-500/30"
+                        >
+                            <UserPlus className="w-6 h-6" />
+                            Join Trip
+                        </button>
                         <button
                             id="plan-journey-btn"
                             onClick={() => setShowCreateModal(true)}
@@ -551,7 +657,7 @@ export default function Dashboard() {
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="flex items-center justify-between pt-4 border-t border-white/5 group-hover:border-white/10 transition-colors">
+                                        <div className="flex items-center justify-between pt-4 border-t border-white/5 group-hover:border-white/10 transition-colors" onClick={e => e.stopPropagation()}>
                                             <div className="flex items-center gap-2">
                                                 <div className="w-7 h-7 rounded-full bg-gradient-to-br from-white/10 to-transparent border border-white/10 flex items-center justify-center">
                                                     <User className="w-3 h-3 text-slate-400" />
@@ -560,8 +666,35 @@ export default function Dashboard() {
                                                     {trip.user_role}
                                                 </span>
                                             </div>
-                                            <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transform translate-x-3 group-hover:translate-x-0 transition-all duration-400 border border-white/10">
-                                                <span className="text-white text-lg leading-none font-light">&rarr;</span>
+
+                                            {/* Trip ID & Key placed beside the Role Label */}
+                                            <div className="flex items-center gap-1.5 ml-auto">
+                                                {trip.share_code && (
+                                                    <button
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(trip.share_code.replace('TRIP-', ''))
+                                                            toast.success('Trip ID copied!')
+                                                        }}
+                                                        className="flex items-center gap-1 px-2.5 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-md text-[9px] font-bold text-slate-300 hover:text-white transition-all cursor-pointer"
+                                                        title="Copy Trip ID"
+                                                    >
+                                                        <span className="text-fuchsia-400 font-extrabold">Trip ID:</span>
+                                                        <span className="font-mono text-[10px]">{trip.share_code.replace('TRIP-', '')}</span>
+                                                    </button>
+                                                )}
+                                                {trip.user_role === 'owner' && trip.trip_key && (
+                                                    <button
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(trip.trip_key.replace('KEY-', ''))
+                                                            toast.success('Trip Key copied!')
+                                                        }}
+                                                        className="flex items-center gap-1 px-2.5 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-md text-[9px] font-bold text-slate-300 hover:text-white transition-all cursor-pointer"
+                                                        title="Copy Trip Key"
+                                                    >
+                                                        <span className="text-indigo-400 font-extrabold">Trip Key:</span>
+                                                        <span className="font-mono text-[10px]">{trip.trip_key.replace('KEY-', '')}</span>
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -627,6 +760,10 @@ export default function Dashboard() {
             <InvitationsHubModal
                 isOpen={showInvitesHub}
                 onClose={() => setShowInvitesHub(false)}
+            />
+            <JoinTripModal
+                isOpen={showJoinModal}
+                onClose={() => setShowJoinModal(false)}
             />
         </div>
     )

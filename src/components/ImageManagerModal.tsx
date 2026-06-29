@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Upload, Trash2, Loader2, ImageIcon, Images } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { toast } from 'react-hot-toast'
@@ -24,6 +24,16 @@ interface UploadState {
 }
 
 export default function ImageManagerModal({ onClose, trips, singleTripId, embedded = false }: ImageManagerModalProps) {
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [onClose])
+
     const queryClient = useQueryClient()
     const [deleting, setDeleting] = useState<UploadState | null>(null)
     const [activePicker, setActivePicker] = useState<{ tripId: string, slot: ImageSlot, currentUrl?: string } | null>(null)

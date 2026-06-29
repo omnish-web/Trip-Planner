@@ -8,6 +8,16 @@ interface EditProfileModalProps {
 }
 
 export default function EditProfileModal({ onClose, onSuccess }: EditProfileModalProps) {
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [onClose])
+
     const [loading, setLoading] = useState(false)
     const [fullName, setFullName] = useState('')
     const [email, setEmail] = useState('')

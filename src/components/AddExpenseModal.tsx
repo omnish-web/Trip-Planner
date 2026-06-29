@@ -40,6 +40,16 @@ interface AddExpenseModalProps {
 }
 
 export default function AddExpenseModal({ tripId, participants, currency, onClose, onSuccess, expenseToEdit, defaultValues, categories = ['Food', 'Transport', 'Accommodation', 'Entertainment', 'Other'] }: AddExpenseModalProps) {
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [onClose])
+
     const queryClient = useQueryClient()
     const [title, setTitle] = useState(defaultValues?.title || '')
     const [amount, setAmount] = useState(defaultValues?.amount || '')

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 
 interface ExpenseAdjustmentConfirmModalProps {
@@ -15,6 +16,17 @@ export default function ExpenseAdjustmentConfirmModal({
     onCancel,
     loading = false
 }: ExpenseAdjustmentConfirmModalProps) {
+    useEffect(() => {
+        if (!isOpen) return
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onCancel()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, onCancel])
+
     if (!isOpen) return null
 
     return (

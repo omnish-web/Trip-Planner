@@ -817,6 +817,7 @@ export default function TripDetail() {
                 <div className="min-h-[500px]">
                     {activeTab === 'expenses' && (
                         <ExpensesTab
+                            tripId={trip.id}
                             expenses={expenses}
                             participants={participants}
                             currency={trip?.currency || 'INR'}
@@ -859,7 +860,7 @@ export default function TripDetail() {
                             onUndoSettlement={handleDelete}
                             onEditSettlement={handleEditSettlement}
                             isOwner={isOwner}
-                            currentUser={currentUser}
+                            currentUser={participants.find(p => p.user_id === currentUser)?.id || null}
                             canEdit={canEdit}
                             isEnded={isEnded}
                         />
